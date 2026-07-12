@@ -25,6 +25,13 @@ describe('resolveSourceDirs', () => {
     const dirs = resolveSourceDirs(root, ['src', 'app'])
     expect(dirs).toEqual([root])
   })
+
+  it('ignora arquivo (não diretório) com nome de source_dir sem lançar', () => {
+    mkdirSync(join(root, 'src'))
+    writeFileSync(join(root, 'lib'), 'não sou um diretório')
+    const dirs = resolveSourceDirs(root, ['src', 'lib'])
+    expect(dirs).toEqual([join(root, 'src')])
+  })
 })
 
 describe('listSourceFiles', () => {

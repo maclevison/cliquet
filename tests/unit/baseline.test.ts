@@ -52,6 +52,32 @@ describe('saveBaseline / loadBaseline', () => {
     expect(loaded.file_size.max_lines).toBe(1000) // default preservado
   })
 
+  it('mescla security.rules em 2 níveis preservando defaults', () => {
+    writeFileSync(
+      join(dir, BASELINE_FILENAME),
+      JSON.stringify({ schema: 'cliquet/v1', security: { rules: { eval_usage: false } } }),
+    )
+    const loaded = loadBaseline(dir)
+    expect(loaded.security.rules.eval_usage).toBe(false)
+    expect(loaded.security.rules.hardcoded_secrets).toBe(true) // default preservado
+    expect(loaded.security.advisories).toBe(0) // default preservado
+  })
+
+  it('lança ConfigError quando uma seção-objeto vem como escalar', () => {
+    writeFileSync(join(dir, BASELINE_FILENAME), JSON.stringify({ security: 'oops' }))
+    expect(() => loadBaseline(dir)).toThrow(ConfigError)
+  })
+
+  it('lança ConfigError quando um escalar vem com tipo errado', () => {
+    writeFileSync(join(dir, BASELINE_FILENAME), JSON.stringify({ coverage: { percentage: '70' } }))
+    expect(() => loadBaseline(dir)).toThrow(ConfigError)
+  })
+
+  it('lança ConfigError quando security.rules vem como array', () => {
+    writeFileSync(join(dir, BASELINE_FILENAME), JSON.stringify({ security: { rules: ['x'] } }))
+    expect(() => loadBaseline(dir)).toThrow(ConfigError)
+  })
+
   it('lança ConfigError para JSON inválido', () => {
     writeFileSync(join(dir, BASELINE_FILENAME), '{ invalid')
     expect(() => loadBaseline(dir)).toThrow(ConfigError)

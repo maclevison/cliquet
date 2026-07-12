@@ -34,6 +34,6 @@ export async function runCommand(file: string, args: string[], opts: RunOptions)
 
 /** Últimas N linhas de stderr para mensagens de gate `error` (spec §9: ~20 linhas). */
 export function tailLines(text: string, n = 20): string {
-  const lines = text.trimEnd().split('\n')
+  const lines = text.trimEnd().split(/\r?\n/)
   return lines.slice(-n).join('\n')
 }

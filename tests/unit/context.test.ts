@@ -27,6 +27,11 @@ describe('detectPackageManager', () => {
     writeFileSync(join(root, 'package.json'), '{}')
     expect(detectPackageManager(root)).toBeNull()
   })
+
+  it('retorna null com package.json malformado (sem lockfile)', () => {
+    writeFileSync(join(root, 'package.json'), '{ invalid json')
+    expect(detectPackageManager(root)).toBeNull()
+  })
 })
 
 describe('createProjectContext', () => {

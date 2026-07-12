@@ -40,4 +40,9 @@ describe('tailLines', () => {
     expect(tail.split('\n')).toHaveLength(20)
     expect(tail.startsWith('line10')).toBe(true)
   })
+
+  it('remove \\r de finais de linha CRLF', () => {
+    const tail = tailLines('a\r\nb\r\nc\r\n')
+    expect(tail).toBe('a\nb\nc')
+  })
 })

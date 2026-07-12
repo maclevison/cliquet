@@ -93,24 +93,63 @@ export function saveBaseline(rootPath: string, baseline: Baseline): void {
   writeFileSync(path, `${JSON.stringify(baseline, null, 2)}\n`)
 }
 
-/** Merge por seção (1 nível): seção ausente → default inteiro; presente → chaves faltantes vêm do default. */
+/** Merge por seção (1 nível): seção ausente → default inteiro; presente → chaves faltantes vêm do default.
+ *  Valida o shape contra o default: seção-objeto exige objeto, array exige array, escalar exige mesmo typeof. */
 function mergeWithDefaults(raw: Record<string, unknown>): Baseline {
   const out = structuredClone(DEFAULT_BASELINE) as unknown as Record<string, unknown>
   for (const key of Object.keys(DEFAULT_BASELINE)) {
     const value = raw[key]
     if (value === undefined) continue
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      out[key] = { ...(out[key] as object), ...(value as object) }
-      // security.rules é aninhado um nível a mais
-      if (key === 'security' && typeof (value as Record<string, unknown>).rules === 'object') {
-        ;(out[key] as { rules: object }).rules = {
-          ...DEFAULT_BASELINE.security.rules,
-          ...((value as { rules: object }).rules),
-        }
+    const defaultValue = (DEFAULT_BASELINE as unknown as Record<string, unknown>)[key]
+    if (isPlainObject(defaultValue)) {
+      if (!isPlainObject(value)) {
+        throw new ConfigError(`Baseline inválido: "${key}" deve ser um objeto`)
       }
+      out[key] = mergeSection(key, defaultValue, value)
     } else {
+      validateLeaf(key, defaultValue, value)
       out[key] = value
     }
   }
   return out as unknown as Baseline
+}
+
+/** Merge de uma seção validando cada chave contra o default (recursivo p/ security.rules). */
+function mergeSection(
+  path: string,
+  defaults: Record<string, unknown>,
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...defaults }
+  for (const key of Object.keys(defaults)) {
+    const value = raw[key]
+    if (value === undefined) continue
+    const defaultValue = defaults[key]
+    if (isPlainObject(defaultValue)) {
+      if (!isPlainObject(value)) {
+        throw new ConfigError(`Baseline inválido: "${path}.${key}" deve ser um objeto`)
+      }
+      out[key] = mergeSection(`${path}.${key}`, defaultValue, value)
+    } else {
+      validateLeaf(`${path}.${key}`, defaultValue, value)
+      out[key] = value
+    }
+  }
+  return out
+}
+
+function validateLeaf(path: string, defaultValue: unknown, value: unknown): void {
+  if (Array.isArray(defaultValue)) {
+    if (!Array.isArray(value)) {
+      throw new ConfigError(`Baseline inválido: "${path}" deve ser um array`)
+    }
+    return
+  }
+  if (typeof value !== typeof defaultValue || Array.isArray(value) || isPlainObject(value)) {
+    throw new ConfigError(`Baseline inválido: "${path}" deve ser ${typeof defaultValue}`)
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
