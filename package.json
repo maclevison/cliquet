@@ -1,0 +1,26 @@
+{
+  "name": "cliquet",
+  "version": "0.1.0",
+  "description": "Quality gate CLI for TS/JS — metrics can only improve, never regress",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20.11" },
+  "bin": { "cliquet": "./dist/cli.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "execa": "^9.5.0",
+    "jscpd": "^4.0.5",
+    "typescript": "^5.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.20.0",
+    "vitest": "^3.0.0"
+  }
+}
