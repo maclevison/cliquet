@@ -215,3 +215,22 @@ describe('baseline auto-creation guard', () => {
     expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(false)
   })
 })
+
+describe('init guard (no package.json)', () => {
+  it('refuses with exit 2 and writes nothing (a dirty cwd in a deep subdir must not seed a baseline)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cliquet-e2e-init-nopkg-'))
+    tmpDirs.push(dir)
+    const code = await run(['init', '--path', dir])
+    expect(code).toBe(2)
+    expect(errOut.join('')).toContain('package.json')
+    expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(false)
+  })
+
+  it('--force overrides the guard (intentional non-npm project)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cliquet-e2e-init-force-'))
+    tmpDirs.push(dir)
+    const code = await run(['init', '--force', '--path', dir])
+    expect(code).toBe(0)
+    expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(true)
+  })
+})

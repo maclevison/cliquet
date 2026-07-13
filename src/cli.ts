@@ -183,6 +183,13 @@ export async function main(
         exitCode = 2
         return
       }
+      // Same guard as check's auto-create: a dirty cwd deep in a subdir must
+      // not silently seed a baseline. --force is the non-npm-project escape hatch.
+      if (!cmdOpts.force && !existsSync(join(opts.path, 'package.json'))) {
+        throw new ConfigError(
+          `no package.json in ${opts.path} — run from the project root, pass --path, or use --force for a non-npm project`,
+        )
+      }
       const baseline = measuredBaseline(opts.path)
       saveBaseline(opts.path, baseline)
       await formatGeneratedBaseline(opts.path, baseline, opts.timeoutMs)
