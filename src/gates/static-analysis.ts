@@ -1,3 +1,4 @@
+import { isAbsolute, relative } from 'node:path'
 import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
 import { hasBiomeConfig, hasEslintConfig, hasTsconfig } from '../detect.js'
 import { runCommand, tailLines } from '../process.js'
@@ -9,7 +10,7 @@ export interface AnalysisCounts {
   locations: string[]
 }
 
-export function parseEslintJson(stdout: string): AnalysisCounts | null {
+export function parseEslintJson(stdout: string, rootPath?: string): AnalysisCounts | null {
   try {
     const parsed = JSON.parse(stdout) as Array<{
       filePath: string
@@ -18,9 +19,12 @@ export function parseEslintJson(stdout: string): AnalysisCounts | null {
     }>
     if (!Array.isArray(parsed)) return null
     const errors = parsed.reduce((sum, f) => sum + f.errorCount, 0)
-    const locations = parsed.flatMap((f) =>
-      f.messages.filter((m) => m.severity === 2).map((m) => `${f.filePath}:${m.line}`),
-    )
+    const locations = parsed.flatMap((f) => {
+      // ESLint reports ABSOLUTE filePaths; every other gate reports relative to
+      // the project root — normalize here so reports don't mix the two styles.
+      const file = rootPath !== undefined && isAbsolute(f.filePath) ? relative(rootPath, f.filePath) : f.filePath
+      return f.messages.filter((m) => m.severity === 2).map((m) => `${file}:${m.line}`)
+    })
     return { errors, locations }
   } catch {
     return null
@@ -56,7 +60,7 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
           exec: async () => {
             const r = await run(eslintBin, ['--format', 'json', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
             if (r.timedOut) return { error: 'eslint timed out' }
-            const parsed = parseEslintJson(r.stdout)
+            const parsed = parseEslintJson(r.stdout, ctx.rootPath)
             if (parsed === null) return { error: tailLines(r.stderr || r.stdout || 'eslint failed') }
             return parsed
           },

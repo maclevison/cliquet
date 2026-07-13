@@ -131,3 +131,20 @@ describe('staticAnalysisGate', () => {
     expect(r.current).toEqual({ errors: 2 })
   })
 })
+
+describe('parseEslintJson path normalization', () => {
+  it('relativizes absolute filePaths against rootPath (mixed-path reports)', () => {
+    const stdout = JSON.stringify([
+      { filePath: '/repo/apps/web/src/a.ts', errorCount: 1, messages: [{ severity: 2, line: 7 }] },
+    ])
+    const r = parseEslintJson(stdout, '/repo/apps/web')
+    expect(r?.locations).toEqual(['src/a.ts:7'])
+  })
+
+  it('leaves already-relative paths untouched', () => {
+    const stdout = JSON.stringify([
+      { filePath: 'src/a.ts', errorCount: 1, messages: [{ severity: 2, line: 7 }] },
+    ])
+    expect(parseEslintJson(stdout, '/repo')?.locations).toEqual(['src/a.ts:7'])
+  })
+})

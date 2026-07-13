@@ -80,7 +80,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
           if (r.timedOut) {
             return { status: 'error', message: 'eslint (internal config) timed out', baseline: base, current: {}, actions: [] }
           }
-          const parsed = parseEslintJson(r.stdout)
+          const parsed = parseEslintJson(r.stdout, ctx.rootPath)
           if (parsed === null) {
             // eslint < 9 doesn't know the flag ("Invalid option '--no-config-lookup'"):
             // degrade to just the built-ins. Narrow regex — generic patterns like
