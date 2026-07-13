@@ -30,6 +30,18 @@ const FRESHNESS_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
 /** Concurrency cap: prevents N deps × 5s timeout from eating the gate's budget serially. */
 const FRESHNESS_CONCURRENCY = 8
 
+/** Version actually installed (node_modules/<dep>/package.json); null = not installed. */
+function installedVersion(rootPath: string, dep: string): string | null {
+  const path = join(rootPath, 'node_modules', dep, 'package.json')
+  if (!existsSync(path)) return null
+  try {
+    const pkg = JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown }
+    return typeof pkg.version === 'string' ? pkg.version : null
+  } catch {
+    return null
+  }
+}
+
 export async function checkPackageFreshness(
   rootPath: string,
   fetcher: RegistryFetcher = defaultRegistryFetcher,
@@ -47,19 +59,26 @@ export async function checkPackageFreshness(
   } catch {
     return []
   }
+  // Freshness is a property of the INSTALLED version, not of the package:
+  // time.modified moves on EVERY publish (react canaries ship daily), so it
+  // would flag deps whose resolved version is years old. Not installed →
+  // version unknown → silent skip, without wasting a registry call.
+  const installed = deps
+    .map((dep) => ({ dep, version: installedVersion(rootPath, dep) }))
+    .filter((d): d is { dep: string; version: string } => d.version !== null)
   const findings: SecurityFinding[] = []
-  for (let i = 0; i < deps.length; i += FRESHNESS_CONCURRENCY) {
-    const batch = deps.slice(i, i + FRESHNESS_CONCURRENCY)
+  for (let i = 0; i < installed.length; i += FRESHNESS_CONCURRENCY) {
+    const batch = installed.slice(i, i + FRESHNESS_CONCURRENCY)
     const results = await Promise.allSettled(
-      batch.map(async (dep): Promise<SecurityFinding | null> => {
+      batch.map(async ({ dep, version }): Promise<SecurityFinding | null> => {
         const meta = await fetcher(dep)
-        const modified = meta.time?.modified
-        if (modified && now.getTime() - new Date(modified).getTime() < FRESHNESS_WINDOW_MS) {
+        const published = meta.time?.[version]
+        if (published && now.getTime() - new Date(published).getTime() < FRESHNESS_WINDOW_MS) {
           return {
             rule: 'package_freshness',
             file: 'package.json',
             line: 1,
-            message: `Package "${dep}" was published less than 3 days ago (untested by the ecosystem)`,
+            message: `Package "${dep}@${version}" was published less than 3 days ago (untested by the ecosystem)`,
           }
         }
         return null
