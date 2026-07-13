@@ -13,6 +13,8 @@ import {
   type Baseline,
 } from './baseline.js'
 import { createProjectContext } from './context.js'
+import { hasBiomeConfig, hasPrettierConfig } from './detect.js'
+import { runCommand } from './process.js'
 import { isAiAgent } from './agent-detector.js'
 import { runCheck } from './runner.js'
 import { formatJson } from './output/json.js'
@@ -85,9 +87,45 @@ function measuredBaseline(rootPath: string): Baseline {
   return baseline
 }
 
+/**
+ * Best-effort: reformat the freshly generated baseline with the project's own
+ * formatter, so the file cliquet just created doesn't fail cliquet's style gate
+ * (custom prettier/biome configs disagree with plain 2-space JSON). Silent
+ * no-op when no formatter is configured/resolvable; runCommand never throws.
+ */
+export async function formatGeneratedBaseline(
+  rootPath: string,
+  baseline: Baseline,
+  timeoutMs: number,
+  run = runCommand,
+): Promise<void> {
+  const ctx = createProjectContext(rootPath, baseline, timeoutMs)
+  const target = join(rootPath, BASELINE_FILENAME)
+  if (hasBiomeConfig(rootPath, ctx.repoRoot)) {
+    const bin = ctx.resolveTool('biome')
+    if (bin !== null) {
+      await run(bin, ['format', '--write', target], { cwd: rootPath, timeoutMs })
+      return
+    }
+  }
+  if (hasPrettierConfig(rootPath, ctx.repoRoot)) {
+    const bin = ctx.resolveTool('prettier')
+    if (bin !== null) await run(bin, ['--write', target], { cwd: rootPath, timeoutMs })
+  }
+}
+
 async function doCheck(opts: GlobalOpts, io: Io, runFixersFirst: boolean): Promise<number> {
   if (!baselineExists(opts.path)) {
-    saveBaseline(opts.path, measuredBaseline(opts.path)) // auto-create (spec §4)
+    // Guard: without a package.json this is almost certainly the wrong cwd
+    // (a subdir, $HOME…) — silently seeding a baseline there helps no one.
+    if (!existsSync(join(opts.path, 'package.json'))) {
+      throw new ConfigError(
+        `no package.json in ${opts.path} — refusing to auto-create ${BASELINE_FILENAME}; run from the project root or pass --path`,
+      )
+    }
+    const baseline = measuredBaseline(opts.path)
+    saveBaseline(opts.path, baseline) // auto-create (spec §4)
+    await formatGeneratedBaseline(opts.path, baseline, opts.timeoutMs)
     io.stderr(`${BASELINE_FILENAME} created with defaults\n`)
   }
   const baseline = loadBaseline(opts.path)
@@ -145,7 +183,9 @@ export async function main(
         exitCode = 2
         return
       }
-      saveBaseline(opts.path, measuredBaseline(opts.path))
+      const baseline = measuredBaseline(opts.path)
+      saveBaseline(opts.path, baseline)
+      await formatGeneratedBaseline(opts.path, baseline, opts.timeoutMs)
       io.stdout(`${BASELINE_FILENAME} created\n`)
     })
 

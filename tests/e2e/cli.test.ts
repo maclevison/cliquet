@@ -204,3 +204,14 @@ describe('cliquet check on a monorepo workspace (walk-up acceptance)', () => {
     expect(code).toBe(0)
   })
 })
+
+describe('baseline auto-creation guard', () => {
+  it('refuses to auto-create a baseline where there is no package.json (exit 2, nothing written)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cliquet-e2e-nopkg-'))
+    tmpDirs.push(dir)
+    const code = await run(['check', '--path', dir])
+    expect(code).toBe(2)
+    expect(errOut.join('')).toContain('package.json')
+    expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(false)
+  })
+})
