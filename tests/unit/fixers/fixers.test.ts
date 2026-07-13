@@ -78,6 +78,20 @@ describe('styleFixer', () => {
     expect(outcome.message).toContain('prettier')
     expect(outcome.message).toContain('SyntaxError: broken file')
   })
+
+  it('Prettier <2 "No matching files" (can\'t expand ".") → quiet skip, not a failure dump', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    const fixer = createStyleFixer({
+      run: brokenRun({
+        exitCode: 2,
+        failed: true,
+        stderr: '[error] No matching files. Patterns tried: . !**/node_modules/** !./node_modules/**',
+      }),
+    })
+    const outcome = await fixer.run(ctxWithTools(['prettier']))
+    expect(outcome.applied).toBe(false)
+    expect(outcome.message).not.toContain('failed')
+  })
 })
 
 describe('lintFixer', () => {
