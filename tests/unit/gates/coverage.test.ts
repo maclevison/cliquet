@@ -175,4 +175,45 @@ describe('coverageGate', () => {
     expect(r.status).toBe('error')
     expect(r.message).toContain('coverage provider')
   })
+
+  it('errors with guidance when jest lacks babel-plugin-istanbul', async () => {
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ devDependencies: { jest: '^29.0.0' } }))
+    const gate = createCoverageGate({
+      run: async () => ({
+        exitCode: 1,
+        stdout: '',
+        stderr: "Cannot find module 'babel-plugin-istanbul'",
+        timedOut: false,
+        failed: true,
+      }),
+    })
+    const r = await gate.run(ctxWithTools(['jest']), baselineWith(85))
+    expect(r.status).toBe('error')
+    expect(r.message).toContain('coverage provider')
+  })
+
+  it('does NOT claim provider missing when tests merely crash under --coverage (provider only in stack trace paths)', async () => {
+    withVitest()
+    const gate = createCoverageGate({
+      run: async () => ({
+        exitCode: 1,
+        stdout: '',
+        // real-world shape: broken tests under --coverage; the provider package
+        // shows up only as a module path inside the stack trace
+        stderr: [
+          'FAIL tests/useAuthStore.test.ts > clears session',
+          "TypeError: Cannot read properties of undefined (reading 'clear')",
+          ' ❯ node_modules/@vitest/coverage-v8/dist/index.js:5:3',
+        ].join('\n'),
+        timedOut: false,
+        failed: true,
+      }),
+    })
+    const r = await gate.run(ctxWithTools(['vitest']), baselineWith(85))
+    expect(r.status).toBe('error')
+    expect(r.message).not.toContain('coverage provider missing')
+    expect(r.message).toContain('was not produced')
+    // the real failure must surface for the user to act on
+    expect(r.message).toContain('useAuthStore')
+  })
 })

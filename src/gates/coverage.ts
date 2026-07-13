@@ -67,9 +67,13 @@ export function createCoverageGate(deps: ToolRunnerDeps = {}): Gate {
         return buildResult(pct, base, runner)
       }
 
-      // No summary: use stderr only to ENRICH the error message.
+      // No summary: use stderr only to ENRICH the error message. Only an
+      // EXPLICIT missing-dependency error means the provider is absent — a
+      // bare package-name mention is usually a stack-trace path from tests
+      // crashing under --coverage, and claiming "provider missing" there
+      // sends the user chasing the wrong fix.
       const stderr = result.stderr || result.stdout
-      if (/coverage-v8|coverage-istanbul|coverage provider|babel-plugin-istanbul/i.test(stderr)) {
+      if (/(?:cannot find (?:dependency|module)|missing dependency)\s*:?\s*['"]?(?:@vitest\/coverage-|babel-plugin-istanbul)/i.test(stderr)) {
         return {
           status: 'error',
           message: `coverage provider missing — install @vitest/coverage-v8 (vitest) or configure jest coverage. Details: ${tailLines(stderr, 5)}`,
