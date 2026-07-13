@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseNpmAudit, parseYarnAudit, createSecurityGate } from '../../../src/gates/security.js'
+import { parseNpmAudit, parseYarnAudit, createSecurityGate, defaultRunAudit } from '../../../src/gates/security.js'
 import { DEFAULT_BASELINE, type Baseline } from '../../../src/baseline.js'
 import { createProjectContext } from '../../../src/context.js'
 
@@ -125,5 +125,40 @@ describe('securityGate', () => {
     const baseline = baselineNoFreshness()
     const r = await gateWith('garbage output').run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.status).toBe('error')
+  })
+
+  it('runs the audit from lockfileDir when it differs from rootPath', async () => {
+    let seenCwd: string | undefined
+    const fakeRun = async (_bin: string, _args: string[], opts: { cwd: string; timeoutMs: number }) => {
+      seenCwd = opts.cwd
+      return { exitCode: 0, stdout: fixture('npm-audit-clean.json'), stderr: '', timedOut: false, failed: false }
+    }
+    const baseline = baselineNoFreshness()
+    const ctx = {
+      ...createProjectContext(root, baseline, 300_000),
+      rootPath: join(root, 'apps', 'web'),
+      lockfileDir: root,
+      packageManager: 'pnpm' as const,
+    }
+    await defaultRunAudit(ctx, fakeRun)
+    expect(seenCwd).toBe(root)
+  })
+
+  it('marks the result as workspace-wide when lockfileDir differs from rootPath', async () => {
+    writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
+    const baseline = baselineNoFreshness()
+    const ctx = { ...createProjectContext(root, baseline, 300_000), lockfileDir: '/other/repo' }
+    const r = await gateWith(fixture('npm-audit-clean.json')).run(ctx, baseline)
+    expect(r.message).toContain('(workspace-wide audit)')
+  })
+
+  it('does NOT mark when lockfileDir equals rootPath or is null', async () => {
+    writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
+    const baseline = baselineNoFreshness()
+    const base = createProjectContext(root, baseline, 300_000)
+    for (const lockfileDir of [root, null]) {
+      const r = await gateWith(fixture('npm-audit-clean.json')).run({ ...base, lockfileDir }, baseline)
+      expect(r.message).not.toContain('workspace-wide')
+    }
   })
 })

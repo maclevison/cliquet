@@ -59,12 +59,13 @@ export function parseAudit(pm: PackageManager | null, stdout: string): AuditCoun
 }
 
 /** Runs the package manager's audit; null = not applicable (no lockfile/pm). */
-async function defaultRunAudit(ctx: ProjectContext): Promise<string | null> {
+export async function defaultRunAudit(ctx: ProjectContext, run = runCommand): Promise<string | null> {
   if (ctx.packageManager === null) return null
   const bin = ctx.resolveTool(ctx.packageManager) ?? ctx.packageManager
   const args = AUDIT_COMMANDS[ctx.packageManager]
   if (!args) return null
-  const result = await runCommand(bin, args, { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+  // Audits must run where the lockfile lives (monorepo: the repo root)
+  const result = await run(bin, args, { cwd: ctx.lockfileDir ?? ctx.rootPath, timeoutMs: ctx.timeoutMs })
   return result.stdout || null
 }
 
@@ -139,7 +140,11 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       }
 
       const failed = findings.length > 0 || advisoriesFail
-      const auditNote = audit === null ? 'audit skipped (no lockfile)' : `${criticalHigh} critical/high advisories`
+      // A root lockfile means the advisories cover the WHOLE monorepo, not just this workspace
+      const workspaceWide =
+        ctx.lockfileDir !== null && ctx.lockfileDir !== ctx.rootPath ? ' (workspace-wide audit)' : ''
+      const auditNote =
+        audit === null ? 'audit skipped (no lockfile)' : `${criticalHigh} critical/high advisories${workspaceWide}`
       // Audit didn't run → advisories was NOT measured: omit the key instead of
       // reporting 0 as if it were a clean measurement.
       const current =
