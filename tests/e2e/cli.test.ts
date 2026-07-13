@@ -1,0 +1,122 @@
+import { describe, it, expect } from 'vitest'
+import { mkdtempSync, cpSync, existsSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { main } from '../../src/cli.js'
+
+const FIXTURES = join(import.meta.dirname, '..', 'fixtures', 'projects')
+let out: string[]
+let errOut: string[]
+
+function capture() {
+  out = []
+  errOut = []
+  return {
+    stdout: (s: string) => out.push(s),
+    stderr: (s: string) => errOut.push(s),
+  }
+}
+
+function copyFixture(name: string): string {
+  const dir = mkdtempSync(join(tmpdir(), `cliquet-e2e-${name}-`))
+  cpSync(join(FIXTURES, name), dir, { recursive: true })
+  return dir
+}
+
+async function run(args: string[], env: Record<string, string> = {}) {
+  return main(['node', 'cliquet', ...args], env, capture())
+}
+
+describe('cliquet init', () => {
+  it('cria o baseline e retorna 0', async () => {
+    const dir = copyFixture('js-plain')
+    const code = await run(['init', '--path', dir])
+    expect(code).toBe(0)
+    expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(true)
+    const baseline = JSON.parse(readFileSync(join(dir, 'cliquet.baseline.json'), 'utf8'))
+    expect(baseline.schema).toBe('cliquet/v1')
+  })
+
+  it('com --force sobrescreve baseline existente sem perguntar', async () => {
+    const dir = copyFixture('failing')
+    const code = await run(['init', '--force', '--path', dir])
+    expect(code).toBe(0)
+    const baseline = JSON.parse(readFileSync(join(dir, 'cliquet.baseline.json'), 'utf8'))
+    expect(baseline.file_size.max_lines).toBe(1000) // voltou ao default
+  })
+
+  it('sem --force sobre baseline existente recusa com exit 2 (comportamento da spec §4)', async () => {
+    const dir = copyFixture('failing')
+    const code = await run(['init', '--path', dir])
+    expect(code).toBe(2)
+    expect(errOut.join('')).toContain('--force')
+  })
+})
+
+describe('cliquet check', () => {
+  it('passa (exit 0) num projeto limpo sem ferramentas — gates skip não falham', async () => {
+    const dir = copyFixture('js-plain')
+    const code = await run(['check', '--path', dir, '--format', 'json'])
+    expect(code).toBe(0)
+    const parsed = JSON.parse(out.join(''))
+    expect(parsed.result).toBe('pass')
+    expect(parsed.schema).toBe('cliquet/v1')
+  })
+
+  it('cria o baseline automaticamente se ausente (spec §4)', async () => {
+    const dir = copyFixture('js-plain')
+    await run(['check', '--path', dir, '--format', 'json'])
+    expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(true)
+  })
+
+  it('falha (exit 1) quando uma gate regride', async () => {
+    const dir = copyFixture('failing')
+    const code = await run(['check', '--path', dir, '--format', 'json'])
+    expect(code).toBe(1)
+    const parsed = JSON.parse(out.join(''))
+    expect(parsed.result).toBe('fail')
+    expect(parsed.actions.some((a: { gate: string }) => a.gate === 'file_size')).toBe(true)
+  })
+
+  it('check --fix re-executa o check e o exit reflete o segundo run (fixers não resolvem file_size)', async () => {
+    const dir = copyFixture('failing')
+    const code = await run(['check', '--fix', '--path', dir, '--format', 'json'])
+    expect(code).toBe(1)
+  })
+
+  it('exit 2 para baseline inválido', async () => {
+    const dir = copyFixture('js-plain')
+    const { writeFileSync } = await import('node:fs')
+    writeFileSync(join(dir, 'cliquet.baseline.json'), '{ broken')
+    const code = await run(['check', '--path', dir])
+    expect(code).toBe(2)
+    expect(errOut.join('')).toContain('Baseline inválido')
+  })
+
+  it('exit 2 para --path inexistente', async () => {
+    const code = await run(['check', '--path', '/nope/nada'])
+    expect(code).toBe(2)
+  })
+
+  it('formato padrão vira json sob agente de IA (spec §3)', async () => {
+    const dir = copyFixture('js-plain')
+    await run(['check', '--path', dir], { CLAUDECODE: '1' })
+    expect(() => JSON.parse(out.join(''))).not.toThrow()
+  })
+
+  it('--format explícito vence a detecção de agente', async () => {
+    const dir = copyFixture('js-plain')
+    await run(['check', '--path', dir, '--format', 'human', '--plain'], { CLAUDECODE: '1' })
+    expect(out.join('')).toContain('CLIQUET')
+  })
+})
+
+describe('cliquet fix', () => {
+  it('roda fixers e o check em seguida; --no-check pula o check', async () => {
+    const dir = copyFixture('js-plain')
+    const code = await run(['fix', '--no-check', '--path', dir, '--format', 'json'])
+    expect(code).toBe(0)
+    const withCheck = await run(['fix', '--path', dir, '--format', 'json'])
+    expect(withCheck).toBe(0)
+  })
+})

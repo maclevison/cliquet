@@ -81,5 +81,14 @@ describe('duplicationGate', () => {
       expect(r.status).toBe('fail')
       expect((r.current.percentage as number) > 2).toBe(true)
     }, 60_000)
+
+    it('passa com 0% quando todo arquivo é menor que min_lines (jscpd não grava relatório)', async () => {
+      writeFileSync(join(root, 'src', 'tiny.js'), 'export const x = 1\n')
+      const gate = createDuplicationGate() // sem deps → usa o jscpd real
+      const baseline = baselineWith(2.0)
+      const r = await gate.run(createProjectContext(root, baseline, 300_000), baseline)
+      expect(r.status).toBe('pass')
+      expect(r.current).toEqual({ percentage: 0, clones: 0 })
+    }, 60_000)
   })
 })

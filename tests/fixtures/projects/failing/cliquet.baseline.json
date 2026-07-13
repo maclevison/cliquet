@@ -1,0 +1,5 @@
+{
+  "schema": "cliquet/v1",
+  "file_size": { "max_lines": 10 },
+  "security": { "advisories": 0, "rules": { "package_freshness": false } }
+}

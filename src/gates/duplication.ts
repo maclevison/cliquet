@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -98,6 +98,16 @@ const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
   )
   if (result.timedOut) return 'jscpd timed out'
   if (!existsSync(join(outputDir, 'jscpd-report.json'))) {
+    // jscpd exits 0 but skips writing a report when every source file is
+    // shorter than --min-lines (nothing could ever qualify as a clone) —
+    // not a tool failure, just "0% duplication, nothing measurable".
+    if (result.exitCode === 0) {
+      writeFileSync(
+        join(outputDir, 'jscpd-report.json'),
+        JSON.stringify({ statistics: { total: { percentage: 0 } }, duplicates: [] }),
+      )
+      return null
+    }
     return tailLines(result.stderr || result.stdout || 'jscpd produced no report')
   }
   return null
