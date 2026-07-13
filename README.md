@@ -1,4 +1,6 @@
-# Cliquet
+<p align="center">
+  <img src="docs/assets/cliquet-banner.webp" alt="Cliquet — quality only moves forward" width="100%" />
+</p>
 
 > **Cliquet** (French for "ratchet", pronounced /kli.kɛ/ — "clee-KEH", silent *t*) — like a ratchet, quality only moves forward.
 
