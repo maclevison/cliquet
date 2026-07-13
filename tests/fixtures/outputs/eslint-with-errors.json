@@ -1,0 +1,19 @@
+[
+  {
+    "filePath": "/proj/src/a.ts",
+    "messages": [
+      { "ruleId": "no-undef", "severity": 2, "message": "'x' is not defined.", "line": 3, "column": 1 },
+      { "ruleId": "no-unused-vars", "severity": 1, "message": "'y' is unused.", "line": 5, "column": 7 }
+    ],
+    "errorCount": 1,
+    "warningCount": 1
+  },
+  {
+    "filePath": "/proj/src/b.ts",
+    "messages": [
+      { "ruleId": "no-undef", "severity": 2, "message": "'z' is not defined.", "line": 10, "column": 1 }
+    ],
+    "errorCount": 1,
+    "warningCount": 0
+  }
+]
