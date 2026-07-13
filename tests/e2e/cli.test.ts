@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { mkdtempSync, cpSync, existsSync, readFileSync } from 'node:fs'
+import { describe, it, expect, afterAll } from 'vitest'
+import { mkdtempSync, cpSync, existsSync, readFileSync, chmodSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { main } from '../../src/cli.js'
@@ -17,8 +17,15 @@ function capture() {
   }
 }
 
+const tmpDirs: string[] = []
+
+afterAll(() => {
+  for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
+})
+
 function copyFixture(name: string): string {
   const dir = mkdtempSync(join(tmpdir(), `cliquet-e2e-${name}-`))
+  tmpDirs.push(dir)
   cpSync(join(FIXTURES, name), dir, { recursive: true })
   return dir
 }
@@ -26,6 +33,17 @@ function copyFixture(name: string): string {
 async function run(args: string[], env: Record<string, string> = {}) {
   return main(['node', 'cliquet', ...args], env, capture())
 }
+
+describe('cliquet --version', () => {
+  it('imprime a versão do package.json e retorna 0', async () => {
+    const code = await run(['--version'])
+    expect(code).toBe(0)
+    const pkg = JSON.parse(
+      readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8'),
+    ) as { version: string }
+    expect(out.join('')).toContain(pkg.version)
+  })
+})
 
 describe('cliquet init', () => {
   it('cria o baseline e retorna 0', async () => {
@@ -96,6 +114,20 @@ describe('cliquet check', () => {
   it('exit 2 para --path inexistente', async () => {
     const code = await run(['check', '--path', '/nope/nada'])
     expect(code).toBe(2)
+  })
+
+  it('exceção inesperada (não-ConfigError, ex. EACCES ao gravar o baseline) sai 2 com stack no stderr', async () => {
+    const dir = copyFixture('js-plain')
+    chmodSync(dir, 0o555) // diretório read-only → saveBaseline lança EACCES (não é ConfigError)
+    try {
+      const code = await run(['init', '--path', dir])
+      expect(code).toBe(2)
+      const stderr = errOut.join('')
+      expect(stderr).toContain('EACCES')
+      expect(stderr).toContain('    at ') // stack trace completo para diagnóstico em CI
+    } finally {
+      chmodSync(dir, 0o755) // restaura para o rmSync do afterAll funcionar
+    }
   })
 
   it('formato padrão vira json sob agente de IA (spec §3)', async () => {

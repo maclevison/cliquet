@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { CONTENT_RULES, runContentRules } from '../../../src/security/content-rules.js'
 
 function run(rule: string, content: string, file = 'src/a.ts') {
@@ -117,5 +119,18 @@ describe('todas as regras', () => {
   })
   it('o registro tem exatamente as 10 regras de conteúdo', () => {
     expect(Object.keys(CONTENT_RULES)).toHaveLength(10)
+  })
+
+  it('não se autodetectam: escanear o próprio content-rules.ts com todas as regras → 0 findings (dogfooding)', () => {
+    // Pina a proteção anti-autodetecção: unsafe_html e insecure_rng são definidos
+    // por concatenação/funções separadas justamente para que as linhas que DEFINEM
+    // os padrões não os acionem. Se alguém "simplificar" de volta para literais
+    // (ex.: regex com o nome do atributo React inline), este teste quebra.
+    const selfSource = readFileSync(
+      join(import.meta.dirname, '..', '..', '..', 'src', 'security', 'content-rules.ts'),
+      'utf8',
+    )
+    const findings = runContentRules('src/security/content-rules.ts', selfSource, Object.keys(CONTENT_RULES))
+    expect(findings).toEqual([])
   })
 })

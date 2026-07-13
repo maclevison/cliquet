@@ -8,7 +8,12 @@ import { runCommand, tailLines } from '../process.js'
 export interface DuplicationReport {
   percentage: number
   clones: string[]
+  /** true quando o 0% foi SINTETIZADO (jscpd saiu 0 sem gravar relatório: nada mensurável), não medido. */
+  synthesized: boolean
 }
+
+/** Marcador gravado no relatório sintetizado para o 0% não se passar por medição real. */
+export const SYNTHESIZED_REPORT_MARKER = '_cliquet_synthesized'
 
 export function parseJscpdReport(raw: string): DuplicationReport | null {
   try {
@@ -19,6 +24,7 @@ export function parseJscpdReport(raw: string): DuplicationReport | null {
         firstFile: { name: string; start: number; end: number }
         secondFile: { name: string; start: number; end: number }
       }>
+      [SYNTHESIZED_REPORT_MARKER]?: boolean
     }
     const percentage = parsed.statistics?.total?.percentage
     if (typeof percentage !== 'number') return null
@@ -26,7 +32,7 @@ export function parseJscpdReport(raw: string): DuplicationReport | null {
       (d) =>
         `${d.firstFile.name}:${d.firstFile.start}-${d.firstFile.end} <-> ${d.secondFile.name}:${d.secondFile.start}-${d.secondFile.end} (${d.lines}L)`,
     )
-    return { percentage, clones }
+    return { percentage, clones, synthesized: parsed[SYNTHESIZED_REPORT_MARKER] === true }
   } catch {
     return null
   }
@@ -100,11 +106,16 @@ const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
   if (!existsSync(join(outputDir, 'jscpd-report.json'))) {
     // jscpd exits 0 but skips writing a report when every source file is
     // shorter than --min-lines (nothing could ever qualify as a clone) —
-    // not a tool failure, just "0% duplication, nothing measurable".
+    // not a tool failure, just "0% duplication, nothing measurable". The
+    // marker keeps this synthesized 0% distinguishable from a measured one.
     if (result.exitCode === 0) {
       writeFileSync(
         join(outputDir, 'jscpd-report.json'),
-        JSON.stringify({ statistics: { total: { percentage: 0 } }, duplicates: [] }),
+        JSON.stringify({
+          statistics: { total: { percentage: 0 } },
+          duplicates: [],
+          [SYNTHESIZED_REPORT_MARKER]: true,
+        }),
       )
       return null
     }
@@ -149,7 +160,9 @@ export function createDuplicationGate(deps: DuplicationGateDeps = {}): Gate {
       if (report.percentage <= maxPct) {
         return {
           status: 'pass',
-          message: `${report.percentage.toFixed(2)}% (baseline: ${maxPct.toFixed(2)}%, ${report.clones.length} clones)`,
+          message: report.synthesized
+            ? '0.00% (nothing measurable: all files below min_lines)'
+            : `${report.percentage.toFixed(2)}% (baseline: ${maxPct.toFixed(2)}%, ${report.clones.length} clones)`,
           baseline: base,
           current,
           actions: [],

@@ -29,6 +29,12 @@ export interface Io {
   stderr: (s: string) => void
 }
 
+// Fonte única da versão: o package.json fica um nível acima tanto de src/ (dev,
+// via vitest) quanto de dist/ (bin compilado), então '..' resolve nos dois casos.
+const CLI_VERSION = (
+  JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as { version: string }
+).version
+
 interface GlobalOpts {
   path: string
   format: 'human' | 'json' | 'json-pretty' | 'github'
@@ -113,11 +119,19 @@ export async function main(
   program
     .name('cliquet')
     .description('Quality gate CLI — metrics can only improve, never regress')
+    .version(CLI_VERSION)
     .option('--path <dir>', 'project root (default: cwd)')
     .option('--format <format>', 'human | json | json-pretty | github')
     .option('--plain', 'disable ANSI colors')
     .option('--timeout <seconds>', 'per-gate timeout (default: 300)')
     .exitOverride() // não deixa o commander chamar process.exit
+    // Roteia help/version/erros de parsing do commander pelo io (testável e
+    // consistente com o resto da saída). Configurado ANTES dos .command() abaixo,
+    // que copiam a configuração de output do pai na criação.
+    .configureOutput({
+      writeOut: (s) => io.stdout(s),
+      writeErr: (s) => io.stderr(s),
+    })
 
   program
     .command('init')
@@ -163,11 +177,19 @@ export async function main(
       return 0 // --help/--version não são erro
     }
     if (err instanceof ConfigError) {
+      // uso/configuração incorretos (baseline inválido, --path inexistente…): só a mensagem
       io.stderr(`${err.message}\n`)
       return 2
     }
-    // erro de parsing do commander (flag inválida etc.) → uso incorreto
-    io.stderr(`${(err as Error).message}\n`)
+    if (typeof code === 'string' && code.startsWith('commander.')) {
+      // erro de parsing do commander (flag inválida etc.) — a mensagem já foi
+      // escrita pelo próprio commander via configureOutput/writeErr acima
+      return 2
+    }
+    // exceção INESPERADA (bug, EACCES/ENOSPC…): stack completo no stderr para
+    // diagnóstico em CI — distinguível dos erros de uso acima, que só têm message
+    const unexpected = err as Error
+    io.stderr(`${unexpected.stack ?? unexpected.message}\n`)
     return 2
   }
   return exitCode
