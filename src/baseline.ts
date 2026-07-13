@@ -167,14 +167,16 @@ function validateStringArrayElements(path: string, value: unknown[]): void {
       throw new ConfigError(`Invalid baseline: "${path}" entries must be strings, got ${JSON.stringify(entry)}`)
     }
     if (path !== 'source_dirs.exclude') continue
-    if (entry.includes(',')) {
-      throw new ConfigError(
-        `Invalid baseline: "${path}" entry "${entry}" must not contain "," (jscpd's --ignore is comma-split; it would be silently garbled)`,
-      )
-    }
+    // Brace check first: a brace glob usually contains a comma too ("{gen,mock}"), and the
+    // brace reason carries the actionable fix ("list the patterns separately").
     if (entry.includes('{') || entry.includes('}')) {
       throw new ConfigError(
         `Invalid baseline: "${path}" entry "${entry}" must not contain "{" or "}" (brace expansion is unsupported; list the patterns separately)`,
+      )
+    }
+    if (entry.includes(',')) {
+      throw new ConfigError(
+        `Invalid baseline: "${path}" entry "${entry}" must not contain "," (jscpd's --ignore is comma-split; it would be silently garbled)`,
       )
     }
     if (entry.startsWith('!')) {

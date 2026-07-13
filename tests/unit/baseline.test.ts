@@ -50,16 +50,21 @@ describe('source_dirs.exclude validation', () => {
   })
 
   it.each([
-    ['non-string entry', ['gen', 42]],
-    ['comma pattern', ['a,b']],
-    ['brace pattern', ['**/*.{gen,mock}.ts']],
-    ['negation pattern', ['!keep']],
-  ])('rejects %s with ConfigError', (_name, exclude) => {
+    ['non-string entry', ['gen', 42], /entries must be strings, got 42/],
+    ['comma pattern', ['a,b'], /entry "a,b" must not contain ","/],
+    [
+      'brace pattern',
+      ['**/*.{gen,mock}.ts'],
+      /entry "\*\*\/\*\.\{gen,mock\}\.ts" must not contain "\{" or "\}"/,
+    ],
+    ['negation pattern', ['!keep'], /entry "!keep" must not start with "!"/],
+  ] as const)('rejects %s with ConfigError', (_name, exclude, messageFragment) => {
     writeFileSync(
       join(dir, BASELINE_FILENAME),
       JSON.stringify({ schema: 'cliquet/v1', source_dirs: { exclude } }),
     )
     expect(() => loadBaseline(dir)).toThrow(ConfigError)
+    expect(() => loadBaseline(dir)).toThrow(messageFragment)
   })
 
   it('rejects a non-string source_dirs.paths entry (same element-level check)', () => {
