@@ -1,9 +1,10 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import type { Gate, GateResult } from '../types.js'
 import { runCommand, tailLines } from '../process.js'
+import { listSourceFiles } from '../source-files.js'
 import { suggestBaselineUpdate } from './improvement.js'
 
 export interface DuplicationReport {
@@ -85,16 +86,27 @@ function resolveJscpdBin(): string | null {
 /** Runs the bundled jscpd; returns null on success or the error message. */
 type JscpdRunner = (dirs: string[], opts: JscpdOptions, outputDir: string) => Promise<string | null>
 
+/** true when at least one source file has >= minLines lines (a clone could exist). */
+function hasMeasurableSource(dirs: string[], minLines: number): boolean {
+  return listSourceFiles(dirs).some(
+    (file) => readFileSync(file, 'utf8').split('\n').length >= minLines,
+  )
+}
+
 const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
   const jscpdBin = resolveJscpdBin()
   if (jscpdBin === null) {
     return 'bundled jscpd binary not found'
   }
+  // Paths RELATIVE to cwd: jscpd's fast-glob silently matches nothing when an
+  // absolute input path contains a dot-dir segment (e.g. a git worktree under
+  // .claude/worktrees/) — same class of problem as ESLint 9's absolute paths.
+  const relativeDirs = dirs.map((dir) => relative(opts.cwd, dir) || '.')
   const result = await runCommand(
     process.execPath,
     [
       jscpdBin,
-      ...dirs,
+      ...relativeDirs,
       '--reporters', 'json',
       '--output', outputDir,
       '--min-lines', String(opts.minLines),
@@ -109,6 +121,12 @@ const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
     // shorter than --min-lines (nothing could ever qualify as a clone) —
     // not a tool failure, just "0% duplication, nothing measurable". The
     // marker keeps this synthesized 0% distinguishable from a measured one.
+    // GUARD: only synthesize when nothing is measurable. If measurable files
+    // exist and jscpd still saw none, its glob missed them — a ratchet must
+    // surface that as an ERROR, never as a silent 0% pass.
+    if (result.exitCode === 0 && hasMeasurableSource(dirs, opts.minLines)) {
+      return `jscpd matched no files although measurable sources exist (glob mismatch). ${tailLines(result.stderr || result.stdout || '', 3)}`.trim()
+    }
     if (result.exitCode === 0) {
       writeFileSync(
         join(outputDir, 'jscpd-report.json'),

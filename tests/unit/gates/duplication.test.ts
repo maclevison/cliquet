@@ -92,5 +92,22 @@ describe('duplicationGate', () => {
       // synthesized 0% (nothing measurable) needs to be distinguishable from a measured 0%
       expect(r.message).toContain('nothing measurable: all files below min_lines')
     }, 60_000)
+
+    it('MEASURES duplication when the project path contains a dot-dir segment (git worktrees under .claude/)', async () => {
+      // regression: fast-glob (inside jscpd) silently matches nothing when the
+      // absolute input path has a dot-dir segment → exit 0, no report → the old
+      // code synthesized a 0% PASS. A ratchet must never false-green.
+      const base = mkdtempSync(join(tmpdir(), 'cliquet-dup-dot-'))
+      const dotRoot = join(base, '.claude', 'worktrees', 'wt1')
+      mkdirSync(join(dotRoot, 'src'), { recursive: true })
+      const dupBlock = Array.from({ length: 20 }, (_, i) => `export const v${i} = compute(${i}, "${i}")`).join('\n')
+      writeFileSync(join(dotRoot, 'src', 'dup1.ts'), dupBlock)
+      writeFileSync(join(dotRoot, 'src', 'dup2.ts'), dupBlock)
+      const gate = createDuplicationGate()
+      const baseline = baselineWith(2.0)
+      const r = await gate.run(createProjectContext(dotRoot, baseline, 300_000), baseline)
+      expect(r.status).toBe('fail')
+      expect((r.current.percentage as number) > 2).toBe(true)
+    }, 60_000)
   })
 })
