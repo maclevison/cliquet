@@ -1,9 +1,21 @@
 {
-  "name": "cliquet",
+  "name": "@craverlab/cliquet",
   "version": "0.1.0",
   "description": "Quality gate CLI for TS/JS — metrics can only improve, never regress",
   "type": "module",
   "license": "MIT",
+  "keywords": [
+    "quality-gate",
+    "ratchet",
+    "code-quality",
+    "ci",
+    "lint",
+    "coverage",
+    "duplication",
+    "complexity",
+    "bundle-size",
+    "typescript"
+  ],
   "engines": {
     "node": ">=20.11"
   },
@@ -13,11 +25,15 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "quality": "npm run build && node dist/cli.js check --timeout 600"
+    "quality": "npm run build && node dist/cli.js check --timeout 600",
+    "prepublishOnly": "npm run test && npm run typecheck && npm run build"
   },
   "dependencies": {
     "commander": "^13.1.0",
