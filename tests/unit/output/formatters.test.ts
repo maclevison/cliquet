@@ -57,6 +57,15 @@ describe('formatHuman', () => {
     expect(formatHuman(sample, { plain: true })).not.toMatch(/\x1b\[/)
     expect(formatHuman(sample, { plain: false })).toMatch(/\x1b\[/)
   })
+  it('warning com mais de 10 files indica a contagem truncada', () => {
+    const manyFiles = Array.from({ length: 12 }, (_, i) => `src/f${i}.ts`)
+    const withBigWarn: CheckResult = {
+      ...sample,
+      actions: [{ gate: 'complexity', type: 'REFACTOR CCN', severity: 'warn', priority: 9, message: 'many', files: manyFiles }],
+    }
+    const out = formatHuman(withBigWarn, { plain: true })
+    expect(out).toContain('and 2 more')
+  })
 })
 
 describe('formatGithub', () => {

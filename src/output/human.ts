@@ -42,6 +42,7 @@ export function formatHuman(result: CheckResult, opts: { plain: boolean }): stri
     warns.forEach((action, i) => {
       lines.push(`  [${i + 1}] ${action.type} — ${action.message}`)
       for (const file of action.files.slice(0, 10)) lines.push(`      → ${file}`)
+      if (action.files.length > 10) lines.push(`      … and ${action.files.length - 10} more`)
     })
   }
   return `${lines.join('\n')}\n`

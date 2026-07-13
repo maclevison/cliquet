@@ -1,4 +1,4 @@
-import type { Fixer } from './types.js'
+import { toolFailureOutcome, toolRunFailed, type Fixer } from './types.js'
 import { hasBiomeConfig, hasPrettierConfig } from '../detect.js'
 import { runCommand } from '../process.js'
 import type { ToolRunnerDeps } from '../gates/style.js'
@@ -12,12 +12,14 @@ export function createStyleFixer(deps: ToolRunnerDeps = {}): Fixer {
       // Biome primeiro; Prettier por último — last writer wins (spec §8)
       const biomeBin = hasBiomeConfig(ctx.rootPath) ? ctx.resolveTool('biome') : null
       if (biomeBin) {
-        await run(biomeBin, ['format', '--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+        const r = await run(biomeBin, ['format', '--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+        if (toolRunFailed(r)) return toolFailureOutcome('biome', r)
         applied.push('biome format --write')
       }
       const prettierBin = hasPrettierConfig(ctx.rootPath) ? ctx.resolveTool('prettier') : null
       if (prettierBin) {
-        await run(prettierBin, ['--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+        const r = await run(prettierBin, ['--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+        if (toolRunFailed(r)) return toolFailureOutcome('prettier', r)
         applied.push('prettier --write')
       }
       return applied.length > 0
