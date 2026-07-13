@@ -1,11 +1,30 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createStyleGate } from '../../../src/gates/style.js'
+import { createStyleGate, parseBiomeDiagnostics } from '../../../src/gates/style.js'
 import { DEFAULT_BASELINE } from '../../../src/baseline.js'
 import { createProjectContext } from '../../../src/context.js'
 import type { RunResult } from '../../../src/process.js'
+
+const fixture = (name: string) =>
+  readFileSync(join(import.meta.dirname, '..', '..', 'fixtures', 'outputs', name), 'utf8')
+
+describe('parseBiomeDiagnostics', () => {
+  it('extrai paths da saída real do biome 2.x (location.path é string)', () => {
+    const files = parseBiomeDiagnostics(fixture('biome-format-diagnostics.json'))
+    expect(files).toEqual(['bad.ts', 'bad2.ts', 'package.json'])
+  })
+
+  it('aceita o shape legado do biome 1.x (location.path.file)', () => {
+    const out = JSON.stringify({ diagnostics: [{ location: { path: { file: './src/a.ts' } } }] })
+    expect(parseBiomeDiagnostics(out)).toEqual(['./src/a.ts'])
+  })
+
+  it('retorna [] para JSON inválido', () => {
+    expect(parseBiomeDiagnostics('boom')).toEqual([])
+  })
+})
 
 let root: string
 beforeEach(() => {
@@ -70,6 +89,13 @@ describe('styleGate', () => {
     const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
     expect(r.status).toBe('error')
     expect(r.message).toContain('crashed hard')
+  })
+
+  it('error quando prettier sai com 1 mas stdout vazio (parse failure não vira 0 violações)', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    const gate = createStyleGate({ run: async () => fail('') })
+    const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
+    expect(r.status).toBe('error')
   })
 
   it('skip quando config existe mas binário não resolve', async () => {

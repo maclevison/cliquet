@@ -11,11 +11,21 @@ export function parsePrettierListDifferent(stdout: string): string[] {
   return stdout.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
 }
 
-/** Parser: biome --reporter=json → diagnostics[].location.path.file. */
+/**
+ * Parser: biome --reporter=json → diagnostics[].location.path.
+ * Shape validado contra saída real (fixture biome-format-diagnostics.json):
+ * biome 2.x usa `location.path` como string; biome 1.x usava `location.path.file`.
+ */
 export function parseBiomeDiagnostics(stdout: string): string[] {
   try {
-    const parsed = JSON.parse(stdout) as { diagnostics?: Array<{ location?: { path?: { file?: string } } }> }
-    return (parsed.diagnostics ?? []).map((d) => d.location?.path?.file ?? '<unknown>')
+    const parsed = JSON.parse(stdout) as {
+      diagnostics?: Array<{ location?: { path?: string | { file?: string } } }>
+    }
+    return (parsed.diagnostics ?? []).map((d) => {
+      const path = d.location?.path
+      if (typeof path === 'string') return path
+      return path?.file ?? '<unknown>'
+    })
   } catch {
     return []
   }
