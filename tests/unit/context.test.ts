@@ -11,31 +11,31 @@ beforeEach(() => {
 })
 
 describe('detectPackageManager', () => {
-  it('prioriza o campo packageManager do package.json', () => {
+  it('prioritizes the packageManager field from package.json', () => {
     writeFileSync(join(root, 'package.json'), JSON.stringify({ packageManager: 'pnpm@9.0.0' }))
     writeFileSync(join(root, 'yarn.lock'), '')
     expect(detectPackageManager(root)).toBe('pnpm')
   })
 
-  it('usa precedência de lockfiles: pnpm > yarn > npm', () => {
+  it('uses lockfile precedence: pnpm > yarn > npm', () => {
     writeFileSync(join(root, 'yarn.lock'), '')
     writeFileSync(join(root, 'package-lock.json'), '{}')
     expect(detectPackageManager(root)).toBe('yarn')
   })
 
-  it('retorna null sem lockfile nem campo', () => {
+  it('returns null with no lockfile and no field', () => {
     writeFileSync(join(root, 'package.json'), '{}')
     expect(detectPackageManager(root)).toBeNull()
   })
 
-  it('retorna null com package.json malformado (sem lockfile)', () => {
+  it('returns null with a malformed package.json (no lockfile)', () => {
     writeFileSync(join(root, 'package.json'), '{ invalid json')
     expect(detectPackageManager(root)).toBeNull()
   })
 })
 
 describe('createProjectContext', () => {
-  it('monta o contexto com sourceDirs resolvidos e timeout', () => {
+  it('builds the context with resolved sourceDirs and timeout', () => {
     mkdirSync(join(root, 'src'))
     const ctx = createProjectContext(root, DEFAULT_BASELINE, 300_000)
     expect(ctx.rootPath).toBe(root)

@@ -10,7 +10,7 @@ import { complexityGate } from './gates/complexity.js'
 import { performanceGate } from './gates/performance.js'
 import { bundleSizeGate } from './gates/bundle-size.js'
 
-/** Ordem fixa de apresentação (spec §5). */
+/** Fixed presentation order (spec §5). */
 export const ALL_GATES: Gate[] = [
   securityGate,
   styleGate,

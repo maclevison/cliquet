@@ -3,7 +3,7 @@ import { relative } from 'node:path'
 import type { Gate, GateResult } from '../types.js'
 import { listSourceFiles } from '../source-files.js'
 
-/** Conta linhas sem tratar o newline final como linha extra; arquivo vazio tem 0 linhas. */
+/** Counts lines without treating a trailing newline as an extra line; an empty file has 0 lines. */
 export function countLines(content: string): number {
   if (content === '') return 0
   const segments = content.split('\n')

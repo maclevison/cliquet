@@ -5,7 +5,7 @@ export interface SecurityFinding {
   message: string
 }
 
-/** Regra de conteúdo avaliada linha a linha — o split do arquivo acontece UMA vez em runContentRules. */
+/** Content rule evaluated line by line — the file split happens ONCE in runContentRules. */
 interface LineRule {
   message: string
   matches(line: string): boolean
@@ -52,10 +52,10 @@ export const CONTENT_RULES: Record<string, LineRule> = {
     /\.(?:query|raw)\s*\(\s*["'][^"']*["']\s*\+/,
   ]),
 
-  // Padrões dos atributos HTML inseguros (React/Vue) construídos por concatenação
-  // (em vez de literal) para que este próprio arquivo — que precisa CONTER esses
-  // nomes para defini-los — não se autodetecte quando o security gate escaneia o
-  // código-fonte do cliquet (spec §6, dogfooding).
+  // Patterns for the unsafe HTML attributes (React/Vue), built via concatenation
+  // (rather than as literals) so that this very file — which must CONTAIN those
+  // names to define them — doesn't self-detect when the security gate scans
+  // cliquet's own source (spec §6, dogfooding).
   unsafe_html: patternRule('Unsanitized HTML injection', [
     new RegExp('dangerously' + 'SetInnerHTML'),
     new RegExp('v-' + 'html'),
@@ -66,10 +66,10 @@ export const CONTENT_RULES: Record<string, LineRule> = {
     /(?:readFile(?:Sync)?|createReadStream|sendFile|unlink(?:Sync)?)\s*\([^)]*req\.(?:params|query|body)/,
   ]),
 
-  // Substring e regex de segurança quebrados em duas funções/linhas: a checagem
-  // completa (usa Math.random + termo sensível na MESMA linha) não pode viver numa
-  // linha só, senão esta própria definição se autodetectaria ao escanear o código
-  // do cliquet (spec §6, dogfooding).
+  // Security substring and regex split across two functions/lines: the full
+  // check (uses Math.random plus a sensitive term on the SAME line) can't live
+  // on a single line, or this very definition would self-detect when scanning
+  // cliquet's own source (spec §6, dogfooding).
   insecure_rng: {
     message: 'Math.random() used in security-sensitive context — use crypto.randomBytes/randomUUID',
     matches: (line) => usesMathRandom(line) && looksSecuritySensitive(line),
@@ -86,7 +86,7 @@ export const CONTENT_RULES: Record<string, LineRule> = {
   ]),
 }
 
-/** Divide o conteúdo UMA vez e avalia as regras habilitadas linha a linha. */
+/** Splits the content ONCE and evaluates the enabled rules line by line. */
 export function runContentRules(file: string, content: string, enabled: string[]): SecurityFinding[] {
   const rules: Array<[string, LineRule]> = []
   for (const name of enabled) {

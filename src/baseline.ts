@@ -4,7 +4,7 @@ import { join } from 'node:path'
 export const BASELINE_FILENAME = 'cliquet.baseline.json'
 export const SCHEMA_VERSION = 'cliquet/v1'
 
-/** Erro de uso/configuração → exit code 2 (spec §3). */
+/** Usage/configuration error → exit code 2 (spec §3). */
 export class ConfigError extends Error {}
 
 export interface SecurityRules {
@@ -93,8 +93,8 @@ export function saveBaseline(rootPath: string, baseline: Baseline): void {
   writeFileSync(path, `${JSON.stringify(baseline, null, 2)}\n`)
 }
 
-/** Merge por seção (1 nível): seção ausente → default inteiro; presente → chaves faltantes vêm do default.
- *  Valida o shape contra o default: seção-objeto exige objeto, array exige array, escalar exige mesmo typeof. */
+/** Merge per section (1 level deep): missing section → full default; present → missing keys come from the default.
+ *  Validates the shape against the default: object section requires an object, array requires an array, scalar requires the same typeof. */
 function mergeWithDefaults(raw: Record<string, unknown>): Baseline {
   const out = structuredClone(DEFAULT_BASELINE) as unknown as Record<string, unknown>
   for (const key of Object.keys(DEFAULT_BASELINE)) {
@@ -114,7 +114,7 @@ function mergeWithDefaults(raw: Record<string, unknown>): Baseline {
   return out as unknown as Baseline
 }
 
-/** Merge de uma seção validando cada chave contra o default (recursivo p/ security.rules). */
+/** Merges a single section, validating each key against the default (recursive for security.rules). */
 function mergeSection(
   path: string,
   defaults: Record<string, unknown>,

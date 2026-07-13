@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { measureFileComplexity } from '../../../src/gates/ccn.js'
 
 describe('measureFileComplexity', () => {
-  it('função sem branches tem CCN 1', () => {
+  it('a function with no branches has CCN 1', () => {
     const [fn] = measureFileComplexity('a.ts', 'function simple() { return 1 }')
     expect(fn?.name).toBe('simple')
     expect(fn?.ccn).toBe(1)
   })
 
-  it('conta if, loops, case, catch, ternário e operadores lógicos', () => {
+  it('counts if, loops, case, catch, ternary, and logical operators', () => {
     const code = `
       function busy(x: number) {
         if (x > 0) {}                      // +1
@@ -24,7 +24,7 @@ describe('measureFileComplexity', () => {
     expect(fn?.ccn).toBe(10) // 1 base + 9
   })
 
-  it('não soma a complexidade de funções aninhadas na função externa', () => {
+  it('does not add nested functions complexity to the outer function', () => {
     const code = `
       function outer() {
         const inner = (x: number) => (x > 0 ? 1 : 2)
@@ -38,7 +38,7 @@ describe('measureFileComplexity', () => {
     expect(inner?.ccn).toBe(2)
   })
 
-  it('mede arrow functions, métodos e funções JS', () => {
+  it('measures arrow functions, methods, and JS functions', () => {
     const code = `
       class A { method(x) { return x ? 1 : 2 } }
       const arrow = (x) => x ? 1 : 2
@@ -48,7 +48,7 @@ describe('measureFileComplexity', () => {
     expect(results.every((r) => r.ccn === 2)).toBe(true)
   })
 
-  it('não lança em arquivo com sintaxe inválida (createSourceFile degrada silenciosamente)', () => {
+  it('does not throw on a file with invalid syntax (createSourceFile degrades silently)', () => {
     expect(() => measureFileComplexity('a.ts', 'function {{{ ??? <<>> !!')).not.toThrow()
   })
 })

@@ -12,17 +12,18 @@ export interface Fixer {
 }
 
 /**
- * Falha de FERRAMENTA (não do fix): timeout, processo que nem executou
- * (exitCode null = spawn failure/signal), ou crash (exit 2+). Exit 0 e 1
- * contam como aplicado — eslint --fix sai 1 quando restam erros não-corrigíveis
- * e prettier --write sai != 0 só em erro real. NÃO use r.failed aqui: o execa
- * marca failed: true para QUALQUER exit != 0, o que engoliria o exit 1 legítimo.
+ * TOOL failure (not a fix failure): timeout, a process that never even ran
+ * (exitCode null = spawn failure/signal), or a crash (exit 2+). Exit 0 and 1
+ * count as applied — eslint --fix exits 1 when non-fixable errors remain,
+ * and prettier --write exits != 0 only on a real error. Do NOT use r.failed
+ * here: execa marks failed: true for ANY exit != 0, which would swallow the
+ * legitimate exit 1.
  */
 export function toolRunFailed(r: RunResult): boolean {
   return r.timedOut || r.exitCode === null || (r.exitCode !== 0 && r.exitCode !== 1)
 }
 
-/** Outcome `applied: false` com o rabo do stderr/stdout para diagnóstico. */
+/** Outcome `applied: false` with the tail of stderr/stdout for diagnostics. */
 export function toolFailureOutcome(tool: string, r: RunResult): FixerOutcome {
   const detail = r.timedOut ? 'timed out' : tailLines(r.stderr || r.stdout || `exit ${r.exitCode}`)
   return { applied: false, message: `${tool} failed: ${detail}` }

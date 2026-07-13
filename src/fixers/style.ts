@@ -9,7 +9,7 @@ export function createStyleFixer(deps: ToolRunnerDeps = {}): Fixer {
     name: 'style',
     async run(ctx) {
       const applied: string[] = []
-      // Biome primeiro; Prettier por último — last writer wins (spec §8)
+      // Biome first; Prettier last — last writer wins (spec §8)
       const biomeBin = hasBiomeConfig(ctx.rootPath) ? ctx.resolveTool('biome') : null
       if (biomeBin) {
         const r = await run(biomeBin, ['format', '--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })

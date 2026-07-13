@@ -39,26 +39,26 @@ export function createCoverageGate(deps: ToolRunnerDeps = {}): Gate {
         return { status: 'skip', message: `${runner} detected but binary not found`, baseline: base, current: {}, actions: [] }
       }
 
-      // Remove o summary de um run ANTERIOR: como a leitura é summary-first, um
-      // arquivo stale seria confiado se o run atual falhasse sem produzir um novo.
+      // Remove the summary from a PREVIOUS run: since reading is summary-first, a
+      // stale file would be trusted if the current run failed without producing a new one.
       const summaryPath = join(ctx.rootPath, 'coverage', 'coverage-summary.json')
       rmSync(summaryPath, { force: true })
 
       const result = await run(bin, RUNNER_ARGS[runner] ?? [], {
         cwd: ctx.rootPath,
         timeoutMs: ctx.timeoutMs,
-        // Reentrância (vitest dentro de vitest no dogfooding): remove as chaves do
-        // runner pai — com o extendEnv padrão do execa, valor undefined REMOVE a chave.
+        // Reentrancy (vitest inside vitest during dogfooding): strip the parent
+        // runner's env keys — with execa's default extendEnv, an undefined value REMOVES the key.
         env: { VITEST: undefined, VITEST_WORKER_ID: undefined, VITEST_POOL_ID: undefined },
       })
       if (result.timedOut) {
         return { status: 'error', message: `${runner} timed out`, baseline: base, current: {}, actions: [] }
       }
 
-      // Summary primeiro: se o relatório existe, é deste run (o stale foi deletado
-      // acima) e é a verdade — mesmo com exit != 0 (testes falhando ainda medem
-      // coverage). O stderr pode conter "coverage provider" por acaso (dump de um
-      // teste falhando), então NÃO pode decidir sozinho.
+      // Summary first: if the report exists, it's from this run (the stale one was
+      // deleted above) and it's the truth — even with exit != 0 (failing tests still
+      // measure coverage). stderr might contain "coverage provider" by coincidence
+      // (dump from a failing test), so it CANNOT decide on its own.
       if (existsSync(summaryPath)) {
         const pct = parseCoverageSummary(readFileSync(summaryPath, 'utf8'))
         if (pct === null) {
@@ -67,7 +67,7 @@ export function createCoverageGate(deps: ToolRunnerDeps = {}): Gate {
         return buildResult(pct, base, runner)
       }
 
-      // Sem summary: usa o stderr só para ENRIQUECER a mensagem de erro.
+      // No summary: use stderr only to ENRICH the error message.
       const stderr = result.stderr || result.stdout
       if (/coverage-v8|coverage-istanbul|coverage provider|babel-plugin-istanbul/i.test(stderr)) {
         return {

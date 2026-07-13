@@ -1,4 +1,4 @@
-/** Lista interna extensível (spec §3). Basta UMA var presente e não-vazia. */
+/** Internal, extensible list (spec §3). Just ONE var needs to be present and non-empty. */
 const AGENT_ENV_VARS = [
   'CLAUDECODE',
   'CLAUDE_CODE',

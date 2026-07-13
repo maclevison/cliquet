@@ -23,7 +23,7 @@ export interface GateResult {
 
 export interface ProjectContext {
   rootPath: string
-  /** Diretórios de source_dirs que existem no disco (absolutos). */
+  /** source_dirs directories that exist on disk (absolute). */
   sourceDirs: string[]
   packageManager: PackageManager | null
   /** node_modules/.bin → PATH → null */

@@ -13,7 +13,7 @@ export function detectPackageManager(rootPath: string): PackageManager | null {
       const field = pkg.packageManager?.split('@')[0]
       if (field === 'npm' || field === 'pnpm' || field === 'yarn') return field
     } catch {
-      // package.json inválido não é fatal aqui; segue para lockfiles
+      // invalid package.json isn't fatal here; falls through to lockfiles
     }
   }
   if (existsSync(join(rootPath, 'pnpm-lock.yaml'))) return 'pnpm'

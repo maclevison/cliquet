@@ -53,7 +53,7 @@ function functionName(node: ts.FunctionLikeDeclaration): string {
     return node.name.getText()
   }
   if (ts.isConstructorDeclaration(node)) return 'constructor'
-  // arrow/function expression: tenta o nome da variável que a recebe
+  // arrow/function expression: try the name of the variable it's assigned to
   const parent = node.parent
   if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) return parent.name.text
   if (ts.isPropertyAssignment(parent) && ts.isIdentifier(parent.name)) return parent.name.text
@@ -69,7 +69,7 @@ const LOGICAL_OPERATORS = [
 function countDecisionPoints(fn: ts.Node): number {
   let count = 0
   const visit = (node: ts.Node): void => {
-    if (node !== fn && isFunctionNode(node)) return // função aninhada conta à parte
+    if (node !== fn && isFunctionNode(node)) return // nested function counts separately
     if (
       ts.isIfStatement(node) ||
       ts.isForStatement(node) ||

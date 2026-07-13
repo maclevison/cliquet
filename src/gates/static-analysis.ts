@@ -85,7 +85,7 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
           exec: async () => {
             const r = await run(tscBin, ['--noEmit', '--pretty', 'false'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
             if (r.timedOut) return { error: 'tsc timed out' }
-            // tsc: exit 0 limpo; exit != 0 com erros parseáveis no stdout; senão crash
+            // tsc: exit 0 clean; exit != 0 with parseable errors on stdout; otherwise crash
             const parsed = parseTscOutput(r.stdout)
             if (r.exitCode !== 0 && parsed.errors === 0) return { error: tailLines(r.stderr || r.stdout || 'tsc failed') }
             return parsed

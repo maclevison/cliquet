@@ -21,7 +21,7 @@ const sample: CheckResult = {
 }
 
 describe('formatJson', () => {
-  it('emite o schema cliquet/v1 com summary, gates e actions', () => {
+  it('emits the cliquet/v1 schema with summary, gates and actions', () => {
     const parsed = JSON.parse(formatJson(sample, { pretty: false }))
     expect(parsed.schema).toBe('cliquet/v1')
     expect(parsed.result).toBe('fail')
@@ -29,7 +29,7 @@ describe('formatJson', () => {
     expect(parsed.gates).toHaveLength(4)
     expect(parsed.actions[0].gate).toBe('style')
   })
-  it('gates[] não carregam actions embutidas — só o top-level actions[] (schema spec §9)', () => {
+  it('gates[] do not carry embedded actions — only the top-level actions[] (schema spec §9)', () => {
     const parsed = JSON.parse(formatJson(sample, { pretty: false })) as {
       gates: Array<Record<string, unknown>>
       actions: unknown[]
@@ -38,15 +38,15 @@ describe('formatJson', () => {
       expect('actions' in gate).toBe(false)
       expect(Object.keys(gate).sort()).toEqual(['baseline', 'current', 'label', 'message', 'name', 'status'])
     }
-    expect(parsed.actions).toHaveLength(2) // top-level preservado
+    expect(parsed.actions).toHaveLength(2) // top-level preserved
   })
-  it('pretty usa identação', () => {
+  it('pretty uses indentation', () => {
     expect(formatJson(sample, { pretty: true })).toContain('\n  ')
   })
 })
 
 describe('formatHuman', () => {
-  it('usa ✔/✘/–/! por status e mostra o resultado (spec §9)', () => {
+  it('uses ✔/✘/–/! per status and shows the result (spec §9)', () => {
     const out = formatHuman(sample, { plain: true })
     expect(out).toContain('✔ Security Audit')
     expect(out).toContain('✘ Code Style')
@@ -55,7 +55,7 @@ describe('formatHuman', () => {
     expect(out).toContain('RESULT: FAIL')
     expect(out).toContain('1/4 gates passed')
   })
-  it('separa Required Actions (block) de Warnings (warn)', () => {
+  it('separates Required Actions (block) from Warnings (warn)', () => {
     const out = formatHuman(sample, { plain: true })
     const requiredIdx = out.indexOf('Required Actions')
     const warningsIdx = out.indexOf('Warnings')
@@ -64,11 +64,11 @@ describe('formatHuman', () => {
     expect(out).toContain('[1] FIX STYLE')
     expect(out).toContain('→ src/a.ts')
   })
-  it('plain remove códigos ANSI', () => {
+  it('plain removes ANSI codes', () => {
     expect(formatHuman(sample, { plain: true })).not.toMatch(/\x1b\[/)
     expect(formatHuman(sample, { plain: false })).toMatch(/\x1b\[/)
   })
-  it('warning com mais de 10 files indica a contagem truncada', () => {
+  it('warning with more than 10 files shows the truncated count', () => {
     const manyFiles = Array.from({ length: 12 }, (_, i) => `src/f${i}.ts`)
     const withBigWarn: CheckResult = {
       ...sample,
@@ -80,7 +80,7 @@ describe('formatHuman', () => {
 })
 
 describe('formatGithub', () => {
-  it('block → ::error::, warn → ::warning::, gates agrupadas', () => {
+  it('block → ::error::, warn → ::warning::, gates grouped', () => {
     const out = formatGithub(sample)
     expect(out).toContain('::group::')
     expect(out).toContain('::error::Fix 2 style violations')

@@ -11,7 +11,7 @@ function makeProject(): string {
 }
 
 describe('createToolResolver', () => {
-  it('prefere node_modules/.bin do projeto', () => {
+  it('prefers the project node_modules/.bin', () => {
     const dir = makeProject()
     const local = join(dir, 'node_modules', '.bin', 'fake-tool')
     writeFileSync(local, '#!/bin/sh\n')
@@ -20,14 +20,14 @@ describe('createToolResolver', () => {
     expect(resolve('fake-tool')).toBe(local)
   })
 
-  it('cai para o PATH quando não há binário local', () => {
+  it('falls back to PATH when there is no local binary', () => {
     const dir = makeProject()
     const resolve = createToolResolver(dir)
-    // `node` sempre existe no PATH do ambiente de teste
+    // `node` always exists on the test environment's PATH
     expect(resolve('node')).not.toBeNull()
   })
 
-  it('retorna null quando não encontra em lugar nenhum', () => {
+  it('returns null when it finds nothing anywhere', () => {
     const dir = makeProject()
     const resolve = createToolResolver(dir)
     expect(resolve('cliquet-tool-inexistente-xyz')).toBeNull()

@@ -27,7 +27,7 @@ export async function defaultRegistryFetcher(pkg: string): Promise<{ time?: Reco
 }
 
 const FRESHNESS_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
-/** Cap de concorrência: evita que N deps × timeout de 5s consumam o budget da gate em série. */
+/** Concurrency cap: prevents N deps × 5s timeout from eating the gate's budget serially. */
 const FRESHNESS_CONCURRENCY = 8
 
 export async function checkPackageFreshness(
@@ -66,7 +66,7 @@ export async function checkPackageFreshness(
       }),
     )
     for (const result of results) {
-      // rejeição = sem rede / registry fora: skip silencioso por dep (spec §6)
+      // rejection = no network / registry down: silent per-dep skip (spec §6)
       if (result.status === 'fulfilled' && result.value !== null) findings.push(result.value)
     }
   }

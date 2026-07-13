@@ -22,7 +22,7 @@ function ctx(baseline: Baseline) {
 }
 
 describe('fileSizeGate', () => {
-  it('passa quando nenhum arquivo excede o limite', async () => {
+  it('passes when no file exceeds the limit', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'a\nb\nc\n')
     const baseline = baselineWith(10)
     const r = await fileSizeGate.run(ctx(baseline), baseline)
@@ -30,8 +30,8 @@ describe('fileSizeGate', () => {
     expect(r.current).toEqual({ offending_files: 0 })
   })
 
-  it('não conta o newline final como linha extra', async () => {
-    // exatamente 3 linhas terminadas em \n — não excede max_lines=3
+  it('does not count the trailing newline as an extra line', async () => {
+    // exactly 3 lines terminated by \n — does not exceed max_lines=3
     writeFileSync(join(root, 'src', 'exact.ts'), 'a\nb\nc\n')
     const baseline = baselineWith(3)
     const r = await fileSizeGate.run(ctx(baseline), baseline)
@@ -39,7 +39,7 @@ describe('fileSizeGate', () => {
     expect(r.current).toEqual({ offending_files: 0 })
   })
 
-  it('arquivo vazio conta 0 linhas', async () => {
+  it('empty file counts 0 lines', async () => {
     writeFileSync(join(root, 'src', 'empty.ts'), '')
     const baseline = baselineWith(0)
     const r = await fileSizeGate.run(ctx(baseline), baseline)
@@ -47,7 +47,7 @@ describe('fileSizeGate', () => {
     expect(r.current).toEqual({ offending_files: 0 })
   })
 
-  it('falha listando os arquivos que excedem', async () => {
+  it('fails listing the files that exceed the limit', async () => {
     writeFileSync(join(root, 'src', 'big.ts'), Array(12).fill('x').join('\n'))
     const baseline = baselineWith(10)
     const r = await fileSizeGate.run(ctx(baseline), baseline)

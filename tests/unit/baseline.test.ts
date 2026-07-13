@@ -17,7 +17,7 @@ beforeEach(() => {
 })
 
 describe('DEFAULT_BASELINE', () => {
-  it('segue os defaults da spec §4', () => {
+  it('follows the spec §4 defaults', () => {
     expect(DEFAULT_BASELINE.schema).toBe('cliquet/v1')
     expect(DEFAULT_BASELINE.source_dirs.paths).toEqual(['src', 'app', 'lib'])
     expect(DEFAULT_BASELINE.coverage.percentage).toBe(85.0)
@@ -35,60 +35,60 @@ describe('DEFAULT_BASELINE', () => {
 })
 
 describe('saveBaseline / loadBaseline', () => {
-  it('round-trip preserva o conteúdo', () => {
+  it('round-trip preserves the content', () => {
     saveBaseline(dir, DEFAULT_BASELINE)
     const loaded = loadBaseline(dir)
     expect(loaded).toEqual(DEFAULT_BASELINE)
     expect(baselineExists(dir)).toBe(true)
   })
 
-  it('mescla seções ausentes com os defaults', () => {
+  it('merges missing sections with the defaults', () => {
     writeFileSync(
       join(dir, BASELINE_FILENAME),
       JSON.stringify({ schema: 'cliquet/v1', coverage: { percentage: 70 } }),
     )
     const loaded = loadBaseline(dir)
     expect(loaded.coverage.percentage).toBe(70)
-    expect(loaded.file_size.max_lines).toBe(1000) // default preservado
+    expect(loaded.file_size.max_lines).toBe(1000) // default preserved
   })
 
-  it('mescla security.rules em 2 níveis preservando defaults', () => {
+  it('merges security.rules 2 levels deep while preserving defaults', () => {
     writeFileSync(
       join(dir, BASELINE_FILENAME),
       JSON.stringify({ schema: 'cliquet/v1', security: { rules: { eval_usage: false } } }),
     )
     const loaded = loadBaseline(dir)
     expect(loaded.security.rules.eval_usage).toBe(false)
-    expect(loaded.security.rules.hardcoded_secrets).toBe(true) // default preservado
-    expect(loaded.security.advisories).toBe(0) // default preservado
+    expect(loaded.security.rules.hardcoded_secrets).toBe(true) // default preserved
+    expect(loaded.security.advisories).toBe(0) // default preserved
   })
 
-  it('lança ConfigError quando uma seção-objeto vem como escalar', () => {
+  it('throws ConfigError when an object section is given as a scalar', () => {
     writeFileSync(join(dir, BASELINE_FILENAME), JSON.stringify({ security: 'oops' }))
     expect(() => loadBaseline(dir)).toThrow(ConfigError)
   })
 
-  it('lança ConfigError quando um escalar vem com tipo errado', () => {
+  it('throws ConfigError when a scalar has the wrong type', () => {
     writeFileSync(join(dir, BASELINE_FILENAME), JSON.stringify({ coverage: { percentage: '70' } }))
     expect(() => loadBaseline(dir)).toThrow(ConfigError)
   })
 
-  it('lança ConfigError quando security.rules vem como array', () => {
+  it('throws ConfigError when security.rules is given as an array', () => {
     writeFileSync(join(dir, BASELINE_FILENAME), JSON.stringify({ security: { rules: ['x'] } }))
     expect(() => loadBaseline(dir)).toThrow(ConfigError)
   })
 
-  it('lança ConfigError para JSON inválido', () => {
+  it('throws ConfigError for invalid JSON', () => {
     writeFileSync(join(dir, BASELINE_FILENAME), '{ invalid')
     expect(() => loadBaseline(dir)).toThrow(ConfigError)
   })
 
-  it('lança ConfigError para schema desconhecido', () => {
+  it('throws ConfigError for an unknown schema', () => {
     writeFileSync(join(dir, BASELINE_FILENAME), JSON.stringify({ schema: 'cliquet/v99' }))
     expect(() => loadBaseline(dir)).toThrow(ConfigError)
   })
 
-  it('salva com identação de 2 espaços e newline final', () => {
+  it('saves with 2-space indentation and a trailing newline', () => {
     saveBaseline(dir, DEFAULT_BASELINE)
     const raw = readFileSync(join(dir, BASELINE_FILENAME), 'utf8')
     expect(raw.endsWith('\n')).toBe(true)

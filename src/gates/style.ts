@@ -7,17 +7,17 @@ export interface ToolRunnerDeps {
   run?: (bin: string, args: string[], opts: RunOptions) => Promise<RunResult>
 }
 
-/** Parser: prettier --list-different imprime um path por linha. */
+/** Parser: prettier --list-different prints one path per line. */
 export function parsePrettierListDifferent(stdout: string): string[] {
   return stdout.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
 }
 
 /**
  * Parser: biome --reporter=json → diagnostics[].location.path.
- * Shape validado contra saída real (fixture biome-format-diagnostics.json):
- * biome 2.x usa `location.path` como string; biome 1.x usava `location.path.file`.
- * Só severity `error`/`fatal` conta (spec §5: warnings do biome lint NÃO são
- * erro); diagnostic sem severity (shape legado 1.x) conta como erro.
+ * Shape validated against real output (fixture biome-format-diagnostics.json):
+ * biome 2.x uses `location.path` as a string; biome 1.x used `location.path.file`.
+ * Only severity `error`/`fatal` counts (spec §5: biome lint warnings are NOT
+ * errors); a diagnostic with no severity (legacy 1.x shape) counts as an error.
  */
 export function parseBiomeDiagnostics(stdout: string): string[] {
   try {
@@ -47,7 +47,7 @@ export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
   async function runPrettier(ctx: ProjectContext, bin: string): Promise<ToolOutcome> {
     const r = await run(bin, ['--list-different', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
     if (r.timedOut) return { files: [], error: 'prettier timed out' }
-    // exit 0 = limpo; exit 1 = diferenças (stdout tem os arquivos); outros = crash
+    // exit 0 = clean; exit 1 = differences (stdout has the files); other = crash
     if (r.exitCode === 0) return { files: [], error: null }
     const files = parsePrettierListDifferent(r.stdout)
     if (r.exitCode === 1 && files.length > 0) return { files, error: null }

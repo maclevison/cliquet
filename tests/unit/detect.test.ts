@@ -16,56 +16,56 @@ beforeEach(() => {
 })
 
 describe('hasPrettierConfig', () => {
-  it('detecta .prettierrc e prettier.config.js', () => {
+  it('detects .prettierrc and prettier.config.js', () => {
     expect(hasPrettierConfig(root)).toBe(false)
     writeFileSync(join(root, '.prettierrc'), '{}')
     expect(hasPrettierConfig(root)).toBe(true)
   })
 
-  it('detecta chave prettier no package.json', () => {
+  it('detects the prettier key in package.json', () => {
     writeFileSync(join(root, 'package.json'), JSON.stringify({ prettier: {} }))
     expect(hasPrettierConfig(root)).toBe(true)
   })
 
-  it('detecta prettier.config.mjs', () => {
+  it('detects prettier.config.mjs', () => {
     writeFileSync(join(root, 'prettier.config.mjs'), '')
     expect(hasPrettierConfig(root)).toBe(true)
   })
 })
 
 describe('hasBiomeConfig', () => {
-  it('detecta biome.json e biome.jsonc', () => {
+  it('detects biome.json and biome.jsonc', () => {
     expect(hasBiomeConfig(root)).toBe(false)
     writeFileSync(join(root, 'biome.jsonc'), '{}')
     expect(hasBiomeConfig(root)).toBe(true)
   })
 
-  it('detecta biome.json', () => {
+  it('detects biome.json', () => {
     writeFileSync(join(root, 'biome.json'), '{}')
     expect(hasBiomeConfig(root)).toBe(true)
   })
 })
 
 describe('hasEslintConfig', () => {
-  it('detecta flat config e config legada (spec §5 gate 3)', () => {
+  it('detects flat config and legacy config (spec §5 gate 3)', () => {
     expect(hasEslintConfig(root)).toBe(false)
     writeFileSync(join(root, 'eslint.config.mjs'), '')
     expect(hasEslintConfig(root)).toBe(true)
   })
 
-  it('detecta .eslintrc.json (config legada)', () => {
+  it('detects .eslintrc.json (legacy config)', () => {
     writeFileSync(join(root, '.eslintrc.json'), '{}')
     expect(hasEslintConfig(root)).toBe(true)
   })
 
-  it('detecta eslintConfig no package.json', () => {
+  it('detects eslintConfig in package.json', () => {
     writeFileSync(join(root, 'package.json'), JSON.stringify({ eslintConfig: {} }))
     expect(hasEslintConfig(root)).toBe(true)
   })
 })
 
 describe('hasTsconfig', () => {
-  it('detecta tsconfig.json', () => {
+  it('detects tsconfig.json', () => {
     expect(hasTsconfig(root)).toBe(false)
     writeFileSync(join(root, 'tsconfig.json'), '{}')
     expect(hasTsconfig(root)).toBe(true)
@@ -73,7 +73,7 @@ describe('hasTsconfig', () => {
 })
 
 describe('detectTestRunner', () => {
-  it('detecta vitest e jest por devDependencies; vitest tem precedência (spec §5 gate 4)', () => {
+  it('detects vitest and jest via devDependencies; vitest takes precedence (spec §5 gate 4)', () => {
     expect(detectTestRunner(root)).toBeNull()
     writeFileSync(join(root, 'package.json'), JSON.stringify({ devDependencies: { jest: '^29.0.0' } }))
     expect(detectTestRunner(root)).toBe('jest')

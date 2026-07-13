@@ -19,11 +19,11 @@ export const INTERNAL_ESLINT_RULES: Record<string, string> = {
 }
 
 /**
- * Grava a flat config interna num diretório TEMPORÁRIO (fora do repo do usuário —
- * um SIGKILL no meio da gate não deixa lixo no projeto) e retorna o path. Caller
- * remove o diretório em finally. Sem chave `files`: o objeto se aplica a todo
- * arquivo lintado. Verificado empiricamente (ESLint 9.39): `--config <path fora
- * do cwd>` sem `files` linta normalmente os alvos passados relativos ao cwd.
+ * Writes the internal flat config to a TEMPORARY directory (outside the user's
+ * repo — a SIGKILL mid-gate won't leave junk in the project) and returns the path.
+ * The caller removes the directory in a finally block. No `files` key: the object
+ * applies to every linted file. Verified empirically (ESLint 9.39): `--config <path
+ * outside cwd>` without `files` lints the passed targets normally, relative to cwd.
  */
 export function writeInternalEslintConfig(dir: string): string {
   const path = join(dir, 'cliquet-internal.eslint.config.mjs')
@@ -43,7 +43,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
       let violations = 0
       const locations: string[] = []
 
-      // 1) built-in: condition order (independe de eslint — spec §5 gate 8)
+      // 1) built-in: condition order (independent of eslint — spec §5 gate 8)
       for (const file of listSourceFiles(ctx.sourceDirs)) {
         const rel = relative(ctx.rootPath, file)
         for (const f of analyzeConditionOrder(rel, readFileSync(file, 'utf8'))) {
@@ -52,15 +52,15 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
         }
       }
 
-      // 2) eslint com config interna, se resolvível
+      // 2) eslint with internal config, if resolvable
       const eslintBin = ctx.resolveTool('eslint')
       if (eslintBin !== null) {
         const configDir = mkdtempSync(join(tmpdir(), 'cliquet-eslint-'))
         const configPath = writeInternalEslintConfig(configDir)
         try {
-          // Paths relativos ao cwd (= ctx.rootPath): passar diretórios absolutos faz o
-          // ESLint 9 tratar tudo como "outside of the base path" e ignorar o glob inteiro.
-          // Fallback de sourceDirs pode ser a própria raiz → relative() vira '' → usa '.'.
+          // Paths relative to cwd (= ctx.rootPath): passing absolute directories makes
+          // ESLint 9 treat everything as "outside of the base path" and ignore the whole glob.
+          // sourceDirs fallback can be the root itself → relative() becomes '' → use '.'.
           const relativeDirs = ctx.sourceDirs.map((dir) => {
             const rel = relative(ctx.rootPath, dir)
             return rel || '.'
@@ -75,15 +75,15 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
           }
           const parsed = parseEslintJson(r.stdout)
           if (parsed === null) {
-            // eslint < 9 não conhece a flag ("Invalid option '--no-config-lookup'"):
-            // degrada para só os built-ins. Regex estreita — padrões genéricos como
-            // "invalid option" mascarariam erros reais de config no eslint 9.
+            // eslint < 9 doesn't know the flag ("Invalid option '--no-config-lookup'"):
+            // degrade to just the built-ins. Narrow regex — generic patterns like
+            // "invalid option" would mask real config errors in eslint 9.
             const unsupported = /no-config-lookup/i.test(r.stderr)
-            // A config interna não tem `files`, então só cobre as extensões default
-            // do eslint (.js/.mjs/.cjs/.jsx) — um sourceDir só com .ts (sem parser TS
-            // configurado aqui de propósito, spec §5 gate 8) faz o eslint 9 recusar
-            // com "all files matching the glob pattern are ignored". Não é falha da
-            // ferramenta: não há nada para as regras JS internas checarem ali.
+            // The internal config has no `files`, so it only covers eslint's default
+            // extensions (.js/.mjs/.cjs/.jsx) — a sourceDir with only .ts (no TS parser
+            // configured here on purpose, spec §5 gate 8) makes eslint 9 refuse with
+            // "all files matching the glob pattern are ignored". Not a tool failure:
+            // there's simply nothing there for the internal JS rules to check.
             const nothingToLint = /matching the glob pattern .* are ignored/i.test(r.stderr)
             if (!unsupported && !nothingToLint) {
               return {

@@ -57,7 +57,7 @@ export const bundleSizeGate: Gate = {
     }
     const m = measureBundle(distDir)
     if (m.files.length === 0) {
-      // build quebrado/vazio não pode virar pass silencioso
+      // a broken/empty build must not silently turn into a pass
       return {
         status: 'skip',
         message: 'build dir exists but contains no bundle artifacts (.js/.mjs/.cjs/.css) — artifact measurement skipped',
@@ -70,7 +70,7 @@ export const bundleSizeGate: Gate = {
     const totalRounded = Math.round(m.totalGzipKb * 100) / 100
     const current = { total_gzip_kb: totalRounded }
     if (m.totalGzipKb <= limit) {
-      // Melhora = medido abaixo do PISO do baseline (não do limite com tolerância)
+      // Improvement = measured below the baseline FLOOR (not the limit with tolerance)
       const passActions =
         m.totalGzipKb < max_total_gzip_kb
           ? [suggestBaselineUpdate('bundle_size', `bundle size improved to ${totalRounded} KB gzip (baseline ${max_total_gzip_kb} KB)`)]

@@ -22,7 +22,7 @@ const fakeRun = async (bin: string, args: string[]): Promise<RunResult> => {
   return { exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }
 }
 
-/** Runner que simula ferramenta quebrada (crash, timeout, binário ausente). */
+/** Runner that simulates a broken tool (crash, timeout, missing binary). */
 function brokenRun(partial: Partial<RunResult>): NonNullable<ToolRunnerDeps['run']> {
   return async (bin, args) => {
     calls.push({ bin, args })
@@ -36,7 +36,7 @@ function ctxWithTools(tools: string[]) {
 }
 
 describe('styleFixer', () => {
-  it('roda biome antes e prettier por último (last writer wins — spec §8)', async () => {
+  it('runs biome first and prettier last (last writer wins — spec §8)', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     writeFileSync(join(root, 'biome.json'), '{}')
     const fixer = createStyleFixer({ run: fakeRun })
@@ -47,14 +47,14 @@ describe('styleFixer', () => {
     expect(calls[1]?.args).toContain('--write')
   })
 
-  it('não aplica nada sem formatador configurado', async () => {
+  it('applies nothing when no formatter is configured', async () => {
     const fixer = createStyleFixer({ run: fakeRun })
     const outcome = await fixer.run(ctxWithTools(['prettier']))
     expect(outcome.applied).toBe(false)
     expect(calls).toHaveLength(0)
   })
 
-  it('ferramenta que crasha (exit 2) → applied: false com mensagem de erro', async () => {
+  it('tool that crashes (exit 2) → applied: false with an error message', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     const fixer = createStyleFixer({ run: brokenRun({ exitCode: 2, failed: true, stderr: 'SyntaxError: broken file' }) })
     const outcome = await fixer.run(ctxWithTools(['prettier']))
@@ -65,7 +65,7 @@ describe('styleFixer', () => {
 })
 
 describe('lintFixer', () => {
-  it('roda eslint --fix quando há config', async () => {
+  it('runs eslint --fix when config is present', async () => {
     writeFileSync(join(root, 'eslint.config.mjs'), '')
     const fixer = createLintFixer({ run: fakeRun })
     const outcome = await fixer.run(ctxWithTools(['eslint']))
@@ -73,15 +73,15 @@ describe('lintFixer', () => {
     expect(calls[0]?.args).toContain('--fix')
   })
 
-  it('eslint --fix com exit 1 (erros não-corrigíveis restantes) ainda conta como aplicado', async () => {
+  it('eslint --fix with exit 1 (remaining non-fixable errors) still counts as applied', async () => {
     writeFileSync(join(root, 'eslint.config.mjs'), '')
-    // shape REAL do runCommand: execa marca failed: true para QUALQUER exit != 0
+    // REAL shape of runCommand: execa marks failed: true for ANY exit != 0
     const fixer = createLintFixer({ run: brokenRun({ exitCode: 1, failed: true }) })
     const outcome = await fixer.run(ctxWithTools(['eslint']))
     expect(outcome.applied).toBe(true)
   })
 
-  it('processo que nem executa (failed) → applied: false com mensagem de erro', async () => {
+  it('process that does not even run (failed) → applied: false with an error message', async () => {
     writeFileSync(join(root, 'eslint.config.mjs'), '')
     const fixer = createLintFixer({ run: brokenRun({ exitCode: null, failed: true, stderr: 'ENOENT' }) })
     const outcome = await fixer.run(ctxWithTools(['eslint']))
@@ -92,7 +92,7 @@ describe('lintFixer', () => {
 })
 
 describe('performanceFixer', () => {
-  it('roda eslint --fix com config interna quando eslint resolve', async () => {
+  it('runs eslint --fix with internal config when eslint resolves', async () => {
     const fixer = createPerformanceFixer({ run: fakeRun })
     const outcome = await fixer.run(ctxWithTools(['eslint']))
     expect(outcome.applied).toBe(true)
@@ -100,13 +100,13 @@ describe('performanceFixer', () => {
     expect(calls[0]?.args).toContain('--fix')
   })
 
-  it('não aplica sem eslint', async () => {
+  it('applies nothing without eslint', async () => {
     const fixer = createPerformanceFixer({ run: fakeRun })
     const outcome = await fixer.run(ctxWithTools([]))
     expect(outcome.applied).toBe(false)
   })
 
-  it('eslint que estoura timeout → applied: false com mensagem de erro', async () => {
+  it('eslint that times out → applied: false with an error message', async () => {
     const fixer = createPerformanceFixer({ run: brokenRun({ exitCode: null, timedOut: true }) })
     const outcome = await fixer.run(ctxWithTools(['eslint']))
     expect(outcome.applied).toBe(false)

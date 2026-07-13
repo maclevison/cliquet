@@ -12,7 +12,7 @@ beforeEach(() => {
   mkdirSync(join(root, 'src'))
 })
 
-// função com CCN = 1 + n (n ifs encadeados)
+// function with CCN = 1 + n (n chained ifs)
 function fnWithCcn(n: number): string {
   const ifs = Array.from({ length: n - 1 }, (_, i) => `if (x === ${i}) {}`).join('\n')
   return `function f(x) {\n${ifs}\nreturn x\n}`
@@ -23,7 +23,7 @@ function baselineWith(warn: number, block: number): Baseline {
 }
 
 describe('complexityGate', () => {
-  it('passa sem warnings quando tudo está abaixo de warn_ccn', async () => {
+  it('passes with no warnings when everything is below warn_ccn', async () => {
     writeFileSync(join(root, 'src', 'a.ts'), fnWithCcn(3))
     const baseline = baselineWith(5, 10)
     const r = await complexityGate.run(createProjectContext(root, baseline, 300_000), baseline)
@@ -31,7 +31,7 @@ describe('complexityGate', () => {
     expect(r.actions).toHaveLength(0)
   })
 
-  it('passa com ação warn entre warn_ccn e block_ccn', async () => {
+  it('passes with a warn action between warn_ccn and block_ccn', async () => {
     writeFileSync(join(root, 'src', 'a.ts'), fnWithCcn(7))
     const baseline = baselineWith(5, 10)
     const r = await complexityGate.run(createProjectContext(root, baseline, 300_000), baseline)
@@ -40,7 +40,7 @@ describe('complexityGate', () => {
     expect(r.actions[0]?.severity).toBe('warn')
   })
 
-  it('falha com ação block acima de block_ccn', async () => {
+  it('fails with a block action above block_ccn', async () => {
     writeFileSync(join(root, 'src', 'a.ts'), fnWithCcn(12))
     const baseline = baselineWith(5, 10)
     const r = await complexityGate.run(createProjectContext(root, baseline, 300_000), baseline)
@@ -48,7 +48,7 @@ describe('complexityGate', () => {
     expect(r.actions.some((a) => a.severity === 'block')).toBe(true)
   })
 
-  it('ignora arquivos .vue (SFC exige extração de <script> — pós-MVP) sem lançar', async () => {
+  it('ignores .vue files (SFC requires <script> extraction — post-MVP) without throwing', async () => {
     const sfc = `<template>\n  <div>{{ x }}</div>\n</template>\n<script>\n${fnWithCcn(12)}\n</script>\n`
     writeFileSync(join(root, 'src', 'App.vue'), sfc)
     const baseline = baselineWith(5, 10)

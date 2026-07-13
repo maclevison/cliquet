@@ -9,11 +9,11 @@ import { suggestBaselineUpdate } from './improvement.js'
 export interface DuplicationReport {
   percentage: number
   clones: string[]
-  /** true quando o 0% foi SINTETIZADO (jscpd saiu 0 sem gravar relatório: nada mensurável), não medido. */
+  /** true when the 0% was SYNTHESIZED (jscpd exited 0 without writing a report: nothing measurable), not measured. */
   synthesized: boolean
 }
 
-/** Marcador gravado no relatório sintetizado para o 0% não se passar por medição real. */
+/** Marker written into the synthesized report so the 0% doesn't pass for a real measurement. */
 export const SYNTHESIZED_REPORT_MARKER = '_cliquet_synthesized'
 
 export function parseJscpdReport(raw: string): DuplicationReport | null {
@@ -43,7 +43,7 @@ interface JscpdOptions {
   minLines: number
   minTokens: number
   timeoutMs: number
-  /** raiz do projeto — os paths do relatório saem relativos a ela */
+  /** project root — report paths come out relative to it */
   cwd: string
 }
 
@@ -73,7 +73,7 @@ function resolveJscpdBin(): string | null {
           return existsSync(bin) ? bin : null
         }
       } catch {
-        // package.json malformado — segue subindo
+        // malformed package.json — keep walking up
       }
     }
     const parent = dirname(dir)
@@ -82,7 +82,7 @@ function resolveJscpdBin(): string | null {
   }
 }
 
-/** Executa o jscpd embutido; retorna null em sucesso ou a mensagem de erro. */
+/** Runs the bundled jscpd; returns null on success or the error message. */
 type JscpdRunner = (dirs: string[], opts: JscpdOptions, outputDir: string) => Promise<string | null>
 
 const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
@@ -159,8 +159,8 @@ export function createDuplicationGate(deps: DuplicationGateDeps = {}): Gate {
       }
       const current = { percentage: report.percentage, clones: report.clones.length }
       if (report.percentage <= maxPct) {
-        // Sugestão de update só com MEDIÇÃO real abaixo do baseline — o 0%
-        // sintetizado não mediu nada e não deve induzir ratchet para 0.
+        // Suggest an update only with a real MEASUREMENT below the baseline — the
+        // synthesized 0% didn't measure anything and shouldn't induce a ratchet to 0.
         const passActions =
           !report.synthesized && report.percentage < maxPct
             ? [suggestBaselineUpdate('duplication', `duplication improved to ${report.percentage.toFixed(2)}% (baseline ${maxPct.toFixed(2)}%)`)]

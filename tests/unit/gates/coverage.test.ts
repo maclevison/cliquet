@@ -9,10 +9,10 @@ import { createProjectContext } from '../../../src/context.js'
 const fixturePath = join(import.meta.dirname, '..', '..', 'fixtures', 'outputs', 'coverage-summary.json')
 
 describe('parseCoverageSummary', () => {
-  it('extrai total.lines.pct', () => {
+  it('extracts total.lines.pct', () => {
     expect(parseCoverageSummary(readFileSync(fixturePath, 'utf8'))).toBe(87.0)
   })
-  it('retorna null para JSON inválido ou sem total', () => {
+  it('returns null for invalid JSON or missing total', () => {
     expect(parseCoverageSummary('nope')).toBeNull()
     expect(parseCoverageSummary('{}')).toBeNull()
   })
@@ -37,17 +37,17 @@ describe('coverageGate', () => {
     return { ...ctx, resolveTool: (bin: string) => (tools.includes(bin) ? `/fake/bin/${bin}` : null) }
   }
 
-  it('skip sem runner detectado', async () => {
+  it('skips when no runner is detected', async () => {
     const gate = createCoverageGate({ run: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }) })
     const r = await gate.run(ctxWithTools(['vitest']), DEFAULT_BASELINE)
     expect(r.status).toBe('skip')
   })
 
-  it('passa quando coverage ≥ baseline', async () => {
+  it('passes when coverage ≥ baseline', async () => {
     withVitest()
     const gate = createCoverageGate({
       run: async () => {
-        // simula o runner gravando o relatório
+        // simulates the runner writing the report
         mkdirSync(join(root, 'coverage'), { recursive: true })
         cpSync(fixturePath, join(root, 'coverage', 'coverage-summary.json'))
         return { exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }
@@ -56,10 +56,10 @@ describe('coverageGate', () => {
     const r = await gate.run(ctxWithTools(['vitest']), baselineWith(85))
     expect(r.status).toBe('pass')
     expect(r.current).toEqual({ percentage: 87.0 })
-    expect(r.message).toContain('vitest') // reporta qual runner usou (spec §5 gate 4)
+    expect(r.message).toContain('vitest') // reports which runner was used (spec §5 gate 4)
   })
 
-  it('pass com MELHORA sugere UPDATE BASELINE como ação opcional (warn, spec §4)', async () => {
+  it('pass with an IMPROVEMENT suggests UPDATE BASELINE as an optional action (warn, spec §4)', async () => {
     withVitest()
     const gate = createCoverageGate({
       run: async () => {
@@ -69,7 +69,7 @@ describe('coverageGate', () => {
       },
     })
     const r = await gate.run(ctxWithTools(['vitest']), baselineWith(85))
-    expect(r.status).toBe('pass') // warn não muda status nem exit code
+    expect(r.status).toBe('pass') // warn does not change status or exit code
     const suggest = r.actions.find((a) => a.type === 'UPDATE BASELINE')
     expect(suggest).toBeDefined()
     expect(suggest?.severity).toBe('warn')
@@ -78,7 +78,7 @@ describe('coverageGate', () => {
     expect(suggest?.message).toContain('cliquet.baseline.json')
   })
 
-  it('pass EMPATADO com o baseline não sugere update', async () => {
+  it('pass TIED with the baseline does not suggest an update', async () => {
     withVitest()
     const gate = createCoverageGate({
       run: async () => {
@@ -92,7 +92,7 @@ describe('coverageGate', () => {
     expect(r.actions).toEqual([])
   })
 
-  it('falha quando coverage < baseline', async () => {
+  it('fails when coverage < baseline', async () => {
     withVitest()
     const gate = createCoverageGate({
       run: async () => {
@@ -106,7 +106,7 @@ describe('coverageGate', () => {
     expect(r.actions[0]?.severity).toBe('block')
   })
 
-  it('usa o summary mesmo com exit != 0 e stderr mencionando provider (testes falhando ainda medem coverage)', async () => {
+  it('uses the summary even with exit != 0 and stderr mentioning provider (failing tests still measure coverage)', async () => {
     withVitest()
     const gate = createCoverageGate({
       run: async () => {
@@ -115,7 +115,7 @@ describe('coverageGate', () => {
         return {
           exitCode: 1,
           stdout: '',
-          // dump de teste falhando que por acaso contém a string "coverage provider"
+          // failing test dump that happens to contain the string "coverage provider"
           stderr: 'FAIL tests/x.test.ts > expect(r.message).toContain("coverage provider")',
           timedOut: false,
           failed: true,
@@ -127,7 +127,7 @@ describe('coverageGate', () => {
     expect(r.current).toEqual({ percentage: 87.0 })
   })
 
-  it('remove VITEST* do env passado ao runner (reentrância vitest-dentro-de-vitest)', async () => {
+  it('strips VITEST* from the env passed to the runner (vitest-inside-vitest reentrancy)', async () => {
     withVitest()
     let seenEnv: Record<string, string | undefined> | undefined
     const gate = createCoverageGate({
@@ -140,27 +140,27 @@ describe('coverageGate', () => {
     })
     await gate.run(ctxWithTools(['vitest']), baselineWith(85))
     expect(seenEnv).toBeDefined()
-    // execa (extendEnv padrão) remove do env do filho as chaves com valor undefined
+    // execa (default extendEnv) removes keys with an undefined value from the child env
     for (const key of ['VITEST', 'VITEST_WORKER_ID', 'VITEST_POOL_ID']) {
-      expect(key in seenEnv!, `${key} deve estar presente como undefined`).toBe(true)
+      expect(key in seenEnv!, `${key} should be present as undefined`).toBe(true)
       expect(seenEnv![key]).toBeUndefined()
     }
   })
 
-  it('não confia em summary STALE: deleta o anterior antes de rodar o runner', async () => {
+  it('does not trust a STALE summary: deletes the previous one before running the runner', async () => {
     withVitest()
-    // summary de um run ANTERIOR já no disco
+    // summary from a PREVIOUS run already on disk
     mkdirSync(join(root, 'coverage'), { recursive: true })
     cpSync(fixturePath, join(root, 'coverage', 'coverage-summary.json'))
     const gate = createCoverageGate({
-      // run atual falha e NÃO grava summary novo
+      // current run fails and does NOT write a new summary
       run: async () => ({ exitCode: 1, stdout: '', stderr: 'boom', timedOut: false, failed: true }),
     })
     const r = await gate.run(ctxWithTools(['vitest']), baselineWith(85))
     expect(r.status).toBe('error')
   })
 
-  it('error com orientação quando o provider de coverage falta', async () => {
+  it('errors with guidance when the coverage provider is missing', async () => {
     withVitest()
     const gate = createCoverageGate({
       run: async () => ({

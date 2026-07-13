@@ -36,7 +36,7 @@ async function run(args: string[], env: Record<string, string> = {}) {
 }
 
 describe('cliquet --version', () => {
-  it('imprime a versão do package.json e retorna 0', async () => {
+  it('prints the package.json version and returns 0', async () => {
     const code = await run(['--version'])
     expect(code).toBe(0)
     const pkg = JSON.parse(
@@ -46,8 +46,8 @@ describe('cliquet --version', () => {
   })
 })
 
-describe('bin invocado via symlink (regressão: npm cria node_modules/.bin como symlink)', () => {
-  it('executa main quando argv[1] é um symlink para dist/cli.js', async () => {
+describe('bin invoked via symlink (regression: npm creates node_modules/.bin as a symlink)', () => {
+  it('runs main when argv[1] is a symlink to dist/cli.js', async () => {
     const root = join(import.meta.dirname, '..', '..')
     const build = await runCommand('npx', ['tsc', '-p', 'tsconfig.build.json'], {
       cwd: root,
@@ -58,7 +58,7 @@ describe('bin invocado via symlink (regressão: npm cria node_modules/.bin como 
     const binDir = mkdtempSync(join(tmpdir(), 'cliquet-bin-'))
     tmpDirs.push(binDir)
     const link = join(binDir, 'cliquet')
-    // npm chmoda o alvo do bin na instalação; imita isso para o exec via shebang funcionar
+    // npm chmods the bin target on install; mimic that so the shebang exec works
     chmodSync(join(root, 'dist', 'cli.js'), 0o755)
     symlinkSync(join(root, 'dist', 'cli.js'), link)
 
@@ -70,7 +70,7 @@ describe('bin invocado via symlink (regressão: npm cria node_modules/.bin como 
 })
 
 describe('cliquet init', () => {
-  it('cria o baseline e retorna 0', async () => {
+  it('creates the baseline and returns 0', async () => {
     const dir = copyFixture('js-plain')
     const code = await run(['init', '--path', dir])
     expect(code).toBe(0)
@@ -79,15 +79,15 @@ describe('cliquet init', () => {
     expect(baseline.schema).toBe('cliquet/v1')
   })
 
-  it('com --force sobrescreve baseline existente sem perguntar', async () => {
+  it('with --force overwrites an existing baseline without asking', async () => {
     const dir = copyFixture('failing')
     const code = await run(['init', '--force', '--path', dir])
     expect(code).toBe(0)
     const baseline = JSON.parse(readFileSync(join(dir, 'cliquet.baseline.json'), 'utf8'))
-    expect(baseline.file_size.max_lines).toBe(1000) // voltou ao default
+    expect(baseline.file_size.max_lines).toBe(1000) // back to default
   })
 
-  it('sem --force sobre baseline existente recusa com exit 2 (comportamento da spec §4)', async () => {
+  it('without --force on an existing baseline refuses with exit 2 (spec §4 behavior)', async () => {
     const dir = copyFixture('failing')
     const code = await run(['init', '--path', dir])
     expect(code).toBe(2)
@@ -96,7 +96,7 @@ describe('cliquet init', () => {
 })
 
 describe('cliquet check', () => {
-  it('passa (exit 0) num projeto limpo sem ferramentas — gates skip não falham', async () => {
+  it('passes (exit 0) on a clean project with no tools — skipped gates do not fail', async () => {
     const dir = copyFixture('js-plain')
     const code = await run(['check', '--path', dir, '--format', 'json'])
     expect(code).toBe(0)
@@ -105,13 +105,13 @@ describe('cliquet check', () => {
     expect(parsed.schema).toBe('cliquet/v1')
   })
 
-  it('cria o baseline automaticamente se ausente (spec §4)', async () => {
+  it('creates the baseline automatically when missing (spec §4)', async () => {
     const dir = copyFixture('js-plain')
     await run(['check', '--path', dir, '--format', 'json'])
     expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(true)
   })
 
-  it('falha (exit 1) quando uma gate regride', async () => {
+  it('fails (exit 1) when a gate regresses', async () => {
     const dir = copyFixture('failing')
     const code = await run(['check', '--path', dir, '--format', 'json'])
     expect(code).toBe(1)
@@ -120,13 +120,13 @@ describe('cliquet check', () => {
     expect(parsed.actions.some((a: { gate: string }) => a.gate === 'file_size')).toBe(true)
   })
 
-  it('check --fix re-executa o check e o exit reflete o segundo run (fixers não resolvem file_size)', async () => {
+  it('check --fix re-runs the check and the exit reflects the second run (fixers do not resolve file_size)', async () => {
     const dir = copyFixture('failing')
     const code = await run(['check', '--fix', '--path', dir, '--format', 'json'])
     expect(code).toBe(1)
   })
 
-  it('exit 2 para baseline inválido', async () => {
+  it('exit 2 for an invalid baseline', async () => {
     const dir = copyFixture('js-plain')
     const { writeFileSync } = await import('node:fs')
     writeFileSync(join(dir, 'cliquet.baseline.json'), '{ broken')
@@ -135,32 +135,32 @@ describe('cliquet check', () => {
     expect(errOut.join('')).toContain('Invalid baseline')
   })
 
-  it('exit 2 para --path inexistente', async () => {
+  it('exit 2 for a nonexistent --path', async () => {
     const code = await run(['check', '--path', '/nope/nada'])
     expect(code).toBe(2)
   })
 
-  it('exceção inesperada (não-ConfigError, ex. EACCES ao gravar o baseline) sai 2 com stack no stderr', async () => {
+  it('unexpected exception (non-ConfigError, e.g. EACCES writing the baseline) exits 2 with a stack trace on stderr', async () => {
     const dir = copyFixture('js-plain')
-    chmodSync(dir, 0o555) // diretório read-only → saveBaseline lança EACCES (não é ConfigError)
+    chmodSync(dir, 0o555) // read-only directory → saveBaseline throws EACCES (not a ConfigError)
     try {
       const code = await run(['init', '--path', dir])
       expect(code).toBe(2)
       const stderr = errOut.join('')
       expect(stderr).toContain('EACCES')
-      expect(stderr).toContain('    at ') // stack trace completo para diagnóstico em CI
+      expect(stderr).toContain('    at ') // full stack trace for CI diagnostics
     } finally {
-      chmodSync(dir, 0o755) // restaura para o rmSync do afterAll funcionar
+      chmodSync(dir, 0o755) // restore so afterAll's rmSync works
     }
   })
 
-  it('formato padrão vira json sob agente de IA (spec §3)', async () => {
+  it('default format becomes json under an AI agent (spec §3)', async () => {
     const dir = copyFixture('js-plain')
     await run(['check', '--path', dir], { CLAUDECODE: '1' })
     expect(() => JSON.parse(out.join(''))).not.toThrow()
   })
 
-  it('--format explícito vence a detecção de agente', async () => {
+  it('explicit --format wins over agent detection', async () => {
     const dir = copyFixture('js-plain')
     await run(['check', '--path', dir, '--format', 'human', '--plain'], { CLAUDECODE: '1' })
     expect(out.join('')).toContain('CLIQUET')
@@ -168,7 +168,7 @@ describe('cliquet check', () => {
 })
 
 describe('cliquet fix', () => {
-  it('roda fixers e o check em seguida; --no-check pula o check', async () => {
+  it('runs fixers then the check; --no-check skips the check', async () => {
     const dir = copyFixture('js-plain')
     const code = await run(['fix', '--no-check', '--path', dir, '--format', 'json'])
     expect(code).toBe(0)

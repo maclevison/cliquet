@@ -15,18 +15,18 @@ const fixture = (name: string) =>
   readFileSync(join(import.meta.dirname, '..', '..', 'fixtures', 'outputs', name), 'utf8')
 
 describe('parseEslintJson', () => {
-  it('soma errorCount e extrai localizações (warnings não contam)', () => {
+  it('sums errorCount and extracts locations (warnings do not count)', () => {
     const r = parseEslintJson(fixture('eslint-with-errors.json'))
     expect(r?.errors).toBe(2)
     expect(r?.locations).toEqual(['/proj/src/a.ts:3', '/proj/src/b.ts:10'])
   })
-  it('retorna null para JSON inválido', () => {
+  it('returns null for invalid JSON', () => {
     expect(parseEslintJson('boom')).toBeNull()
   })
 })
 
 describe('parseTscOutput', () => {
-  it('conta erros e extrai arquivo:linha', () => {
+  it('counts errors and extracts file:line', () => {
     const out = [
       'src/a.ts(3,5): error TS2322: Type error.',
       "src/b.ts(10,1): error TS2304: Cannot find name 'z'.",
@@ -49,13 +49,13 @@ describe('staticAnalysisGate', () => {
     return { ...ctx, resolveTool: (bin: string) => (tools.includes(bin) ? `/fake/bin/${bin}` : null) }
   }
 
-  it('skip sem linter e sem tsconfig', async () => {
+  it('skip without a linter and without tsconfig', async () => {
     const gate = createStaticAnalysisGate({ run: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }) })
     const r = await gate.run(ctxWithTools(['eslint', 'tsc']), DEFAULT_BASELINE)
     expect(r.status).toBe('skip')
   })
 
-  it('roda só o tsc em projeto TS sem linter', async () => {
+  it('runs only tsc in a TS project without a linter', async () => {
     writeFileSync(join(root, 'tsconfig.json'), '{}')
     const tscOut = 'src/a.ts(3,5): error TS2322: Type error.'
     const gate = createStaticAnalysisGate({
@@ -66,7 +66,7 @@ describe('staticAnalysisGate', () => {
     expect(r.current).toEqual({ errors: 1 })
   })
 
-  it('soma eslint + tsc e passa quando ambos limpos', async () => {
+  it('sums eslint + tsc and passes when both are clean', async () => {
     writeFileSync(join(root, 'tsconfig.json'), '{}')
     writeFileSync(join(root, 'eslint.config.mjs'), '')
     const gate = createStaticAnalysisGate({
@@ -80,7 +80,7 @@ describe('staticAnalysisGate', () => {
     expect(r.current).toEqual({ errors: 0 })
   })
 
-  it('error quando eslint crasha com JSON inválido', async () => {
+  it('error when eslint crashes with invalid JSON', async () => {
     writeFileSync(join(root, 'eslint.config.mjs'), '')
     const gate = createStaticAnalysisGate({
       run: async (): Promise<RunResult> => ({ exitCode: 2, stdout: 'Oops', stderr: 'config error', timedOut: false, failed: true }),
@@ -89,7 +89,7 @@ describe('staticAnalysisGate', () => {
     expect(r.status).toBe('error')
   })
 
-  it('skip com mensagem distinta quando config existe mas binário não resolve (spec §5)', async () => {
+  it('skip with a distinct message when config exists but the binary does not resolve (spec §5)', async () => {
     writeFileSync(join(root, 'eslint.config.mjs'), '')
     const gate = createStaticAnalysisGate({
       run: async (): Promise<RunResult> => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }),
@@ -99,7 +99,7 @@ describe('staticAnalysisGate', () => {
     expect(r.message).toContain('binary not found')
   })
 
-  it('biome lint: warnings não contam como erro (spec §5)', async () => {
+  it('biome lint: warnings do not count as an error (spec §5)', async () => {
     writeFileSync(join(root, 'biome.json'), '{}')
     const biomeOut = JSON.stringify({
       diagnostics: [
@@ -115,7 +115,7 @@ describe('staticAnalysisGate', () => {
     expect(r.current).toEqual({ errors: 1 })
   })
 
-  it('soma eslint + biome quando ambos configurados (spec §5)', async () => {
+  it('sums eslint + biome when both are configured (spec §5)', async () => {
     writeFileSync(join(root, 'eslint.config.mjs'), '')
     writeFileSync(join(root, 'biome.json'), '{}')
     const eslintOut = JSON.stringify([{ filePath: '/p/src/a.ts', errorCount: 1, messages: [{ severity: 2, line: 2 }] }])

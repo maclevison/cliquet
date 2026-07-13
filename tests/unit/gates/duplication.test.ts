@@ -12,13 +12,13 @@ const fixture = readFileSync(
 )
 
 describe('parseJscpdReport', () => {
-  it('extrai percentage e pares de clones', () => {
+  it('extracts percentage and clone pairs', () => {
     const r = parseJscpdReport(fixture)
     expect(r?.percentage).toBe(5.2)
     expect(r?.clones).toHaveLength(2)
     expect(r?.clones[0]).toBe('src/a.ts:10-50 <-> src/b.ts:100-140 (40L)')
   })
-  it('retorna null para JSON inválido', () => {
+  it('returns null for invalid JSON', () => {
     expect(parseJscpdReport('nope')).toBeNull()
   })
 })
@@ -34,7 +34,7 @@ describe('duplicationGate', () => {
     return { ...DEFAULT_BASELINE, duplication: { percentage: pct, min_lines: 5, min_tokens: 50 } }
   }
 
-  it('passa quando duplicação ≤ baseline (via runner fake que grava o report)', async () => {
+  it('passes when duplication ≤ baseline (via a fake runner that writes the report)', async () => {
     const gate = createDuplicationGate({
       runJscpd: async (_dirs, _opts, outputDir) => {
         writeFileSync(
@@ -50,7 +50,7 @@ describe('duplicationGate', () => {
     expect(r.current).toEqual({ percentage: 1.1, clones: 0 })
   })
 
-  it('falha acima do baseline com pares de clones nas actions', async () => {
+  it('fails above the baseline with clone pairs in the actions', async () => {
     const gate = createDuplicationGate({
       runJscpd: async (_dirs, _opts, outputDir) => {
         writeFileSync(join(outputDir, 'jscpd-report.json'), fixture)
@@ -63,7 +63,7 @@ describe('duplicationGate', () => {
     expect(r.actions[0]?.files).toHaveLength(2)
   })
 
-  it('error quando o jscpd falha', async () => {
+  it('errors when jscpd fails', async () => {
     const gate = createDuplicationGate({ runJscpd: async () => 'jscpd exploded' })
     const baseline = baselineWith(2.0)
     const r = await gate.run(createProjectContext(root, baseline, 300_000), baseline)
@@ -71,25 +71,25 @@ describe('duplicationGate', () => {
   })
 
   describe('jscpd real (smoke)', () => {
-    it('roda o binário embutido num diretório com duplicação óbvia', async () => {
+    it('runs the bundled binary on a directory with obvious duplication', async () => {
       const dupBlock = Array.from({ length: 20 }, (_, i) => `export const v${i} = compute(${i}, "${i}")`).join('\n')
       writeFileSync(join(root, 'src', 'dup1.ts'), dupBlock)
       writeFileSync(join(root, 'src', 'dup2.ts'), dupBlock)
-      const gate = createDuplicationGate() // sem deps → usa o jscpd real
+      const gate = createDuplicationGate() // no deps → uses the real jscpd
       const baseline = baselineWith(2.0)
       const r = await gate.run(createProjectContext(root, baseline, 300_000), baseline)
       expect(r.status).toBe('fail')
       expect((r.current.percentage as number) > 2).toBe(true)
     }, 60_000)
 
-    it('passa com 0% sintetizado e marcador na message quando todo arquivo é menor que min_lines (jscpd não grava relatório)', async () => {
+    it('passes with a synthesized 0% and a marker in the message when every file is below min_lines (jscpd writes no report)', async () => {
       writeFileSync(join(root, 'src', 'tiny.js'), 'export const x = 1\n')
-      const gate = createDuplicationGate() // sem deps → usa o jscpd real
+      const gate = createDuplicationGate() // no deps → uses the real jscpd
       const baseline = baselineWith(2.0)
       const r = await gate.run(createProjectContext(root, baseline, 300_000), baseline)
       expect(r.status).toBe('pass')
       expect(r.current).toEqual({ percentage: 0, clones: 0 })
-      // 0% sintetizado (nada mensurável) precisa ser distinguível de 0% medido
+      // synthesized 0% (nothing measurable) needs to be distinguishable from a measured 0%
       expect(r.message).toContain('nothing measurable: all files below min_lines')
     }, 60_000)
   })

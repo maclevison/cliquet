@@ -11,21 +11,21 @@ const fixture = (name: string) =>
   readFileSync(join(import.meta.dirname, '..', '..', 'fixtures', 'outputs', name), 'utf8')
 
 describe('parseBiomeDiagnostics', () => {
-  it('extrai paths da saída real do biome 2.x (location.path é string)', () => {
+  it('extracts paths from real biome 2.x output (location.path is a string)', () => {
     const files = parseBiomeDiagnostics(fixture('biome-format-diagnostics.json'))
     expect(files).toEqual(['bad.ts', 'bad2.ts', 'package.json'])
   })
 
-  it('aceita o shape legado do biome 1.x (location.path.file)', () => {
+  it('accepts the legacy biome 1.x shape (location.path.file)', () => {
     const out = JSON.stringify({ diagnostics: [{ location: { path: { file: './src/a.ts' } } }] })
     expect(parseBiomeDiagnostics(out)).toEqual(['./src/a.ts'])
   })
 
-  it('retorna [] para JSON inválido', () => {
+  it('returns [] for invalid JSON', () => {
     expect(parseBiomeDiagnostics('boom')).toEqual([])
   })
 
-  it('conta só severity error/fatal — warnings do biome lint não são erro (spec §5)', () => {
+  it('counts only error/fatal severity — biome lint warnings are not errors (spec §5)', () => {
     const out = JSON.stringify({
       diagnostics: [
         { severity: 'error', location: { path: 'src/a.ts' } },
@@ -56,13 +56,13 @@ function ctxWithTools(tools: string[]) {
 }
 
 describe('styleGate', () => {
-  it('skip quando não há config de formatador', async () => {
+  it('skip when there is no formatter config', async () => {
     const gate = createStyleGate({ run: async () => ok() })
     const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
     expect(r.status).toBe('skip')
   })
 
-  it('passa com prettier limpo (empate com baseline 0 → sem sugestão de update)', async () => {
+  it('passes with clean prettier (tied with baseline 0 → no update suggestion)', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     const gate = createStyleGate({ run: async () => ok('') })
     const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
@@ -71,9 +71,9 @@ describe('styleGate', () => {
     expect(r.actions).toEqual([])
   })
 
-  it('pass com MELHORA (violações abaixo do baseline) sugere UPDATE BASELINE (warn, spec §4)', async () => {
+  it('pass with IMPROVEMENT (violations below baseline) suggests UPDATE BASELINE (warn, spec §4)', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
-    const gate = createStyleGate({ run: async () => ok('') }) // 0 violações medidas
+    const gate = createStyleGate({ run: async () => ok('') }) // 0 measured violations
     const baseline = { ...DEFAULT_BASELINE, style: { violations: 2 } }
     const r = await gate.run(ctxWithTools(['prettier']), baseline)
     expect(r.status).toBe('pass')
@@ -85,7 +85,7 @@ describe('styleGate', () => {
     expect(suggest?.message).toContain('cliquet.baseline.json')
   })
 
-  it('falha contando arquivos do --list-different', async () => {
+  it('fails counting files from --list-different', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     const gate = createStyleGate({ run: async () => fail('src/a.ts\nsrc/b.ts\n') })
     const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
@@ -94,7 +94,7 @@ describe('styleGate', () => {
     expect(r.actions[0]?.files).toEqual(['src/a.ts', 'src/b.ts'])
   })
 
-  it('soma prettier + biome quando ambos configurados', async () => {
+  it('sums prettier + biome when both are configured', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     writeFileSync(join(root, 'biome.json'), '{}')
     const gate = createStyleGate({
@@ -108,7 +108,7 @@ describe('styleGate', () => {
     expect(r.current).toEqual({ violations: 2 })
   })
 
-  it('error quando a ferramenta crasha (exit code inesperado, stdout vazio)', async () => {
+  it('error when the tool crashes (unexpected exit code, empty stdout)', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     const gate = createStyleGate({
       run: async () => ({ exitCode: 2, stdout: '', stderr: 'crashed hard', timedOut: false, failed: true }),
@@ -118,14 +118,14 @@ describe('styleGate', () => {
     expect(r.message).toContain('crashed hard')
   })
 
-  it('error quando prettier sai com 1 mas stdout vazio (parse failure não vira 0 violações)', async () => {
+  it('error when prettier exits with 1 but stdout is empty (parse failure does not become 0 violations)', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     const gate = createStyleGate({ run: async () => fail('') })
     const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
     expect(r.status).toBe('error')
   })
 
-  it('skip quando config existe mas binário não resolve', async () => {
+  it('skip when config exists but the binary does not resolve', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     const gate = createStyleGate({ run: async () => ok() })
     const r = await gate.run(ctxWithTools([]), DEFAULT_BASELINE)

@@ -20,7 +20,7 @@ function baselineWith(maxKb: number, tolerance = 0): Baseline {
 }
 
 describe('measureBundle', () => {
-  it('soma gzip de js/css e ignora sourcemaps', () => {
+  it('sums gzip size of js/css and ignores sourcemaps', () => {
     mkdirSync(join(root, 'dist'))
     writeFileSync(join(root, 'dist', 'app.js'), 'x'.repeat(10_000))
     writeFileSync(join(root, 'dist', 'app.css'), 'y'.repeat(5_000))
@@ -28,18 +28,18 @@ describe('measureBundle', () => {
     const m = measureBundle(join(root, 'dist'))
     expect(m.files).toHaveLength(2)
     expect(m.totalGzipKb).toBeGreaterThan(0)
-    expect(m.totalGzipKb).toBeLessThan(1) // strings repetidas comprimem muito
+    expect(m.totalGzipKb).toBeLessThan(1) // repeated strings compress heavily
   })
 })
 
 describe('bundleSizeGate', () => {
-  it('skip quando nenhum dist_dir existe', async () => {
+  it('skips when no dist_dir exists', async () => {
     const baseline = baselineWith(100)
     const r = await bundleSizeGate.run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.status).toBe('skip')
   })
 
-  it('skip com orientação quando max é 0 (não medido)', async () => {
+  it('skips with guidance when max is 0 (not measured)', async () => {
     mkdirSync(join(root, 'dist'))
     writeFileSync(join(root, 'dist', 'app.js'), 'code')
     const baseline = baselineWith(0)
@@ -48,7 +48,7 @@ describe('bundleSizeGate', () => {
     expect(r.message).toContain('init')
   })
 
-  it('skip quando o dist existe mas não contém artefatos js/css (build quebrado não vira pass)', async () => {
+  it('skips when dist exists but contains no js/css artifacts (a broken build does not become a pass)', async () => {
     mkdirSync(join(root, 'dist'))
     writeFileSync(join(root, 'dist', 'index.html'), '<html></html>')
     const baseline = baselineWith(100)
@@ -57,10 +57,10 @@ describe('bundleSizeGate', () => {
     expect(r.message).toContain('artifact')
   })
 
-  it('passa dentro do limite + tolerância e falha acima, listando top 5', async () => {
+  it('passes within limit + tolerance and fails above it, listing the top 5', async () => {
     mkdirSync(join(root, 'dist'))
     for (let i = 0; i < 7; i++) {
-      // conteúdo aleatório comprime mal → tamanho previsível o bastante para o teste
+      // random content compresses poorly → size predictable enough for the test
       writeFileSync(join(root, 'dist', `chunk${i}.js`), crypto.getRandomValues(new Uint8Array(20_000)))
     }
     const big = baselineWith(1000)

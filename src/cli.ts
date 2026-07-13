@@ -30,8 +30,8 @@ export interface Io {
   stderr: (s: string) => void
 }
 
-// Fonte única da versão: o package.json fica um nível acima tanto de src/ (dev,
-// via vitest) quanto de dist/ (bin compilado), então '..' resolve nos dois casos.
+// Single source of truth for the version: package.json sits one level above both
+// src/ (dev, via vitest) and dist/ (compiled bin), so '..' resolves in both cases.
 const CLI_VERSION = (
   JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as { version: string }
 ).version
@@ -69,7 +69,7 @@ function render(result: CheckResult, opts: GlobalOpts): string {
   }
 }
 
-/** init mede coverage/bundle se houver artefatos no disco (spec §4). */
+/** init measures coverage/bundle if artifacts exist on disk (spec §4). */
 function measuredBaseline(rootPath: string): Baseline {
   const baseline = structuredClone(DEFAULT_BASELINE)
   const summaryPath = join(rootPath, 'coverage', 'coverage-summary.json')
@@ -96,7 +96,7 @@ async function doCheck(opts: GlobalOpts, io: Io, runFixersFirst: boolean): Promi
   let result = await runCheck(ctx, baseline)
   if (result.result === 'fail' && runFixersFirst) {
     await runAllFixers(ctx, io)
-    result = await runCheck(ctx, baseline) // exit code reflete o segundo check (spec §3)
+    result = await runCheck(ctx, baseline) // exit code reflects the second check (spec §3)
   }
   io.stdout(render(result, opts))
   return result.result === 'pass' ? 0 : 1
@@ -125,10 +125,10 @@ export async function main(
     .option('--format <format>', 'human | json | json-pretty | github')
     .option('--plain', 'disable ANSI colors')
     .option('--timeout <seconds>', 'per-gate timeout (default: 300)')
-    .exitOverride() // não deixa o commander chamar process.exit
-    // Roteia help/version/erros de parsing do commander pelo io (testável e
-    // consistente com o resto da saída). Configurado ANTES dos .command() abaixo,
-    // que copiam a configuração de output do pai na criação.
+    .exitOverride() // prevents commander from calling process.exit
+    // Routes commander's help/version/parsing errors through io (testable and
+    // consistent with the rest of the output). Configured BEFORE the .command() calls
+    // below, which copy the parent's output configuration at creation time.
     .configureOutput({
       writeOut: (s) => io.stdout(s),
       writeErr: (s) => io.stderr(s),
@@ -175,20 +175,20 @@ export async function main(
   } catch (err) {
     const code = (err as { code?: string }).code
     if (code === 'commander.helpDisplayed' || code === 'commander.help' || code === 'commander.version') {
-      return 0 // --help/--version não são erro
+      return 0 // --help/--version aren't errors
     }
     if (err instanceof ConfigError) {
-      // uso/configuração incorretos (baseline inválido, --path inexistente…): só a mensagem
+      // incorrect usage/configuration (invalid baseline, nonexistent --path…): message only
       io.stderr(`${err.message}\n`)
       return 2
     }
     if (typeof code === 'string' && code.startsWith('commander.')) {
-      // erro de parsing do commander (flag inválida etc.) — a mensagem já foi
-      // escrita pelo próprio commander via configureOutput/writeErr acima
+      // commander parsing error (invalid flag, etc.) — the message was already
+      // written by commander itself via configureOutput/writeErr above
       return 2
     }
-    // exceção INESPERADA (bug, EACCES/ENOSPC…): stack completo no stderr para
-    // diagnóstico em CI — distinguível dos erros de uso acima, que só têm message
+    // UNEXPECTED exception (bug, EACCES/ENOSPC…): full stack to stderr for
+    // diagnosis in CI — distinguishable from the usage errors above, which only have a message
     const unexpected = err as Error
     io.stderr(`${unexpected.stack ?? unexpected.message}\n`)
     return 2
@@ -196,9 +196,9 @@ export async function main(
   return exitCode
 }
 
-// Entry point do bin (dist/cli.js) — pathToFileURL lida com espaços no path.
-// realpathSync resolve o symlink que o npm cria em node_modules/.bin, sem o qual
-// argv[1] (symlink) nunca igualaria import.meta.url (arquivo real) e o bin sairia mudo.
+// Bin entry point (dist/cli.js) — pathToFileURL handles spaces in the path.
+// realpathSync resolves the symlink npm creates in node_modules/.bin, without which
+// argv[1] (symlink) would never equal import.meta.url (real file) and the bin would silently do nothing.
 function isDirectInvocation(): boolean {
   const invoked = process.argv[1]
   if (!invoked) return false

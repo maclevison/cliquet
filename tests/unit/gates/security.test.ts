@@ -10,25 +10,25 @@ const fixture = (name: string) =>
   readFileSync(join(import.meta.dirname, '..', '..', 'fixtures', 'outputs', name), 'utf8')
 
 describe('parseNpmAudit', () => {
-  it('extrai critical+high do metadata', () => {
+  it('extracts critical+high from metadata', () => {
     expect(parseNpmAudit(fixture('npm-audit-with-vulns.json'))).toEqual({ criticalHigh: 2, total: 3 })
     expect(parseNpmAudit(fixture('npm-audit-clean.json'))).toEqual({ criticalHigh: 0, total: 0 })
   })
 
-  it('retorna null para JSON inválido', () => {
+  it('returns null for invalid JSON', () => {
     expect(parseNpmAudit('not json')).toBeNull()
   })
 })
 
 describe('parseYarnAudit', () => {
-  it('extrai critical+high da linha auditSummary (NDJSON do yarn classic)', () => {
+  it('extracts critical+high from the auditSummary line (yarn classic NDJSON)', () => {
     const ndjson = [
       JSON.stringify({ type: 'info', data: 'x' }),
       JSON.stringify({ type: 'auditSummary', data: { vulnerabilities: { info: 0, low: 1, moderate: 0, high: 1, critical: 1 } } }),
     ].join('\n')
     expect(parseYarnAudit(ndjson)).toEqual({ criticalHigh: 2, total: 3 })
   })
-  it('retorna null sem linha auditSummary', () => {
+  it('returns null without an auditSummary line', () => {
     expect(parseYarnAudit('not json\n{"type":"info"}')).toBeNull()
   })
 })
@@ -42,7 +42,7 @@ describe('securityGate', () => {
   })
 
   function gateWith(auditJson: string | null) {
-    // injeta um runner de audit fake e desabilita package_freshness (rede)
+    // injects a fake audit runner and disables package_freshness (network)
     return createSecurityGate({
       runAudit: async () => auditJson,
       freshnessFetcher: async () => ({ time: {} }),
@@ -55,7 +55,7 @@ describe('securityGate', () => {
     return b
   }
 
-  it('passa em projeto limpo', async () => {
+  it('passes on a clean project', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
     const r = await gateWith(fixture('npm-audit-clean.json')).run(
@@ -65,7 +65,7 @@ describe('securityGate', () => {
     expect(r.status).toBe('pass')
   })
 
-  it('falha com finding de regra habilitada (tolerância zero)', async () => {
+  it('fails with a finding from an enabled rule (zero tolerance)', async () => {
     writeFileSync(join(root, 'src', 'bad.ts'), 'eval(input)')
     const baseline = baselineNoFreshness()
     const r = await gateWith(fixture('npm-audit-clean.json')).run(
@@ -76,7 +76,7 @@ describe('securityGate', () => {
     expect(r.actions[0]?.files[0]).toContain('bad.ts:1')
   })
 
-  it('não roda regra desabilitada no baseline', async () => {
+  it('does not run a rule disabled in the baseline', async () => {
     writeFileSync(join(root, 'src', 'bad.ts'), 'eval(input)')
     const baseline = baselineNoFreshness()
     baseline.security.rules.eval_usage = false
@@ -87,7 +87,7 @@ describe('securityGate', () => {
     expect(r.status).toBe('pass')
   })
 
-  it('falha quando advisories critical/high excedem o baseline', async () => {
+  it('fails when critical/high advisories exceed the baseline', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
     const r = await gateWith(fixture('npm-audit-with-vulns.json')).run(
@@ -98,18 +98,18 @@ describe('securityGate', () => {
     expect(r.message).toContain('advisories')
   })
 
-  it('audit ausente (sem lockfile) não falha a gate e não reporta advisories como medidos', async () => {
+  it('missing audit (no lockfile) does not fail the gate and does not report advisories as measured', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
     const r = await gateWith(null).run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.status).toBe('pass')
     expect(r.message).toContain('audit skipped')
-    // advisories não foi medido — reportar 0 seria um falso "medido limpo"
+    // advisories was not measured — reporting 0 would be a false "measured clean"
     expect(r.current).toEqual({ findings: 0 })
     expect('advisories' in r.current).toBe(false)
   })
 
-  it('audit presente reporta advisories medidos em current', async () => {
+  it('present audit reports measured advisories in current', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
     const r = await gateWith(fixture('npm-audit-clean.json')).run(
@@ -119,7 +119,7 @@ describe('securityGate', () => {
     expect(r.current).toEqual({ advisories: 0, findings: 0 })
   })
 
-  it('audit presente mas imparseável vira error — não pass silencioso', async () => {
+  it('present but unparseable audit becomes error — not a silent pass', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     writeFileSync(join(root, 'package-lock.json'), '{}')
     const baseline = baselineNoFreshness()

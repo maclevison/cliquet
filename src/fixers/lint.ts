@@ -11,7 +11,7 @@ export function createLintFixer(deps: ToolRunnerDeps = {}): Fixer {
       const applied: string[] = []
       const eslintBin = hasEslintConfig(ctx.rootPath) ? ctx.resolveTool('eslint') : null
       if (eslintBin) {
-        // exit 1 = restaram erros não-corrigíveis (fix aplicado mesmo assim); 2+ = crash
+        // exit 1 = non-fixable errors remain (fix still applied); 2+ = crash
         const r = await run(eslintBin, ['--fix', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
         if (toolRunFailed(r)) return toolFailureOutcome('eslint', r)
         applied.push('eslint --fix')

@@ -45,7 +45,7 @@ export function hasTsconfig(rootPath: string): boolean {
 
 export type TestRunner = 'vitest' | 'jest'
 
-/** Detecção por presença em dependencies/devDependencies; precedência Vitest > Jest (spec §5 gate 4). */
+/** Detection by presence in dependencies/devDependencies; Vitest takes precedence over Jest (spec §5 gate 4). */
 export function detectTestRunner(rootPath: string): TestRunner | null {
   const path = join(rootPath, 'package.json')
   if (!existsSync(path)) return null

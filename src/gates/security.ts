@@ -35,7 +35,7 @@ const AUDIT_COMMANDS: Record<string, string[]> = {
   yarn: ['audit', '--json'],
 }
 
-/** yarn classic emite NDJSON; a linha type=auditSummary traz os totais. */
+/** yarn classic emits NDJSON; the type=auditSummary line carries the totals. */
 export function parseYarnAudit(stdout: string): AuditCounts | null {
   for (const line of stdout.split('\n')) {
     try {
@@ -48,7 +48,7 @@ export function parseYarnAudit(stdout: string): AuditCounts | null {
         }
       }
     } catch {
-      // linha não-JSON: ignora
+      // non-JSON line: ignore
     }
   }
   return null
@@ -58,7 +58,7 @@ export function parseAudit(pm: PackageManager | null, stdout: string): AuditCoun
   return pm === 'yarn' ? parseYarnAudit(stdout) : parseNpmAudit(stdout)
 }
 
-/** Roda o audit do package manager; null = não aplicável (sem lockfile/pm). */
+/** Runs the package manager's audit; null = not applicable (no lockfile/pm). */
 async function defaultRunAudit(ctx: ProjectContext): Promise<string | null> {
   if (ctx.packageManager === null) return null
   const bin = ctx.resolveTool(ctx.packageManager) ?? ctx.packageManager
@@ -85,7 +85,7 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       const rules = baseline.security.rules
       const findings: SecurityFinding[] = []
 
-      // Regras de conteúdo habilitadas — split único por arquivo em runContentRules
+      // Enabled content rules — single split per file in runContentRules
       const enabledContentRules = Object.keys(CONTENT_RULES).filter((name) => rules[name as keyof typeof rules])
       if (enabledContentRules.length > 0) {
         for (const file of listSourceFiles(ctx.sourceDirs)) {
@@ -95,15 +95,15 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
         }
       }
 
-      // Regras de projeto
+      // Project rules
       if (rules.gitignore_sensitive) findings.push(...checkGitignoreSensitive(ctx.rootPath))
       if (rules.package_freshness) findings.push(...(await checkPackageFreshness(ctx.rootPath, freshnessFetcher)))
 
-      // Audit do package manager
+      // Package manager audit
       const auditRaw = await runAudit(ctx)
       const audit = auditRaw === null ? null : parseAudit(ctx.packageManager, auditRaw)
       if (auditRaw !== null && audit === null) {
-        // saída presente mas imparseável NÃO é skip legítimo — mascarar advisories seria pass falso
+        // output present but unparseable is NOT a legitimate skip — masking advisories would be a false pass
         return {
           status: 'error',
           message: `${ctx.packageManager ?? 'npm'} audit output could not be parsed`,
@@ -139,8 +139,8 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
 
       const failed = findings.length > 0 || advisoriesFail
       const auditNote = audit === null ? 'audit skipped (no lockfile)' : `${criticalHigh} critical/high advisories`
-      // Audit não rodou → advisories NÃO foi medido: omitir a chave em vez de
-      // reportar 0 como se fosse uma medição limpa.
+      // Audit didn't run → advisories was NOT measured: omit the key instead of
+      // reporting 0 as if it were a clean measurement.
       const current =
         audit === null
           ? { findings: findings.length }
