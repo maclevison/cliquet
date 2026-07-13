@@ -1,0 +1,81 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createStyleGate } from '../../../src/gates/style.js'
+import { DEFAULT_BASELINE } from '../../../src/baseline.js'
+import { createProjectContext } from '../../../src/context.js'
+import type { RunResult } from '../../../src/process.js'
+
+let root: string
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), 'cliquet-style-'))
+})
+
+function ok(stdout = ''): RunResult {
+  return { exitCode: 0, stdout, stderr: '', timedOut: false, failed: false }
+}
+function fail(stdout: string, exitCode = 1): RunResult {
+  return { exitCode, stdout, stderr: '', timedOut: false, failed: false }
+}
+
+function ctxWithTools(tools: string[]) {
+  const ctx = createProjectContext(root, DEFAULT_BASELINE, 300_000)
+  return { ...ctx, resolveTool: (bin: string) => (tools.includes(bin) ? `/fake/bin/${bin}` : null) }
+}
+
+describe('styleGate', () => {
+  it('skip quando não há config de formatador', async () => {
+    const gate = createStyleGate({ run: async () => ok() })
+    const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
+    expect(r.status).toBe('skip')
+  })
+
+  it('passa com prettier limpo', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    const gate = createStyleGate({ run: async () => ok('') })
+    const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
+    expect(r.status).toBe('pass')
+    expect(r.current).toEqual({ violations: 0 })
+  })
+
+  it('falha contando arquivos do --list-different', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    const gate = createStyleGate({ run: async () => fail('src/a.ts\nsrc/b.ts\n') })
+    const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
+    expect(r.status).toBe('fail')
+    expect(r.current).toEqual({ violations: 2 })
+    expect(r.actions[0]?.files).toEqual(['src/a.ts', 'src/b.ts'])
+  })
+
+  it('soma prettier + biome quando ambos configurados', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    writeFileSync(join(root, 'biome.json'), '{}')
+    const gate = createStyleGate({
+      run: async (bin) =>
+        bin.includes('prettier')
+          ? fail('src/a.ts\n')
+          : fail(JSON.stringify({ diagnostics: [{ location: { path: { file: 'src/c.ts' } } }] })),
+    })
+    const r = await gate.run(ctxWithTools(['prettier', 'biome']), DEFAULT_BASELINE)
+    expect(r.status).toBe('fail')
+    expect(r.current).toEqual({ violations: 2 })
+  })
+
+  it('error quando a ferramenta crasha (exit code inesperado, stdout vazio)', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    const gate = createStyleGate({
+      run: async () => ({ exitCode: 2, stdout: '', stderr: 'crashed hard', timedOut: false, failed: true }),
+    })
+    const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
+    expect(r.status).toBe('error')
+    expect(r.message).toContain('crashed hard')
+  })
+
+  it('skip quando config existe mas binário não resolve', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    const gate = createStyleGate({ run: async () => ok() })
+    const r = await gate.run(ctxWithTools([]), DEFAULT_BASELINE)
+    expect(r.status).toBe('skip')
+  })
+})
