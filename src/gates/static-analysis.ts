@@ -49,7 +49,7 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
       const base = { errors: baseline.static_analysis.errors }
       const jobs: Array<{ name: string; exec: () => Promise<AnalysisCounts | { error: string }> }> = []
 
-      const eslintBin = hasEslintConfig(ctx.rootPath) ? ctx.resolveTool('eslint') : null
+      const eslintBin = hasEslintConfig(ctx.rootPath, ctx.repoRoot) ? ctx.resolveTool('eslint') : null
       if (eslintBin) {
         jobs.push({
           name: 'eslint',
@@ -63,7 +63,7 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
         })
       }
 
-      const biomeBin = hasBiomeConfig(ctx.rootPath) ? ctx.resolveTool('biome') : null
+      const biomeBin = hasBiomeConfig(ctx.rootPath, ctx.repoRoot) ? ctx.resolveTool('biome') : null
       if (biomeBin) {
         jobs.push({
           name: 'biome',
@@ -95,7 +95,7 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
 
       if (jobs.length === 0) {
         const anyConfigured =
-          hasEslintConfig(ctx.rootPath) || hasBiomeConfig(ctx.rootPath) || hasTsconfig(ctx.rootPath)
+          hasEslintConfig(ctx.rootPath, ctx.repoRoot) || hasBiomeConfig(ctx.rootPath, ctx.repoRoot) || hasTsconfig(ctx.rootPath)
         return {
           status: 'skip',
           message: anyConfigured ? 'tools configured but binary not found' : 'no linter or tsconfig found',

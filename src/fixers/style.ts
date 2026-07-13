@@ -10,13 +10,13 @@ export function createStyleFixer(deps: ToolRunnerDeps = {}): Fixer {
     async run(ctx) {
       const applied: string[] = []
       // Biome first; Prettier last — last writer wins (spec §8)
-      const biomeBin = hasBiomeConfig(ctx.rootPath) ? ctx.resolveTool('biome') : null
+      const biomeBin = hasBiomeConfig(ctx.rootPath, ctx.repoRoot) ? ctx.resolveTool('biome') : null
       if (biomeBin) {
         const r = await run(biomeBin, ['format', '--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
         if (toolRunFailed(r)) return toolFailureOutcome('biome', r)
         applied.push('biome format --write')
       }
-      const prettierBin = hasPrettierConfig(ctx.rootPath) ? ctx.resolveTool('prettier') : null
+      const prettierBin = hasPrettierConfig(ctx.rootPath, ctx.repoRoot) ? ctx.resolveTool('prettier') : null
       if (prettierBin) {
         const r = await run(prettierBin, ['--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
         if (toolRunFailed(r)) return toolFailureOutcome('prettier', r)

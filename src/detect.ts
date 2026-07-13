@@ -1,19 +1,23 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirChain } from './workspace.js'
 
-function anyExists(rootPath: string, names: string[]): boolean {
-  return names.some((n) => existsSync(join(rootPath, n)))
+/** Checks every dir from rootPath up to stopDir (monorepo roots keep shared configs). */
+function anyExists(rootPath: string, names: string[], stopDir: string | null = null): boolean {
+  return dirChain(rootPath, stopDir).some((dir) => names.some((n) => existsSync(join(dir, n))))
 }
 
-function packageJsonHasKey(rootPath: string, key: string): boolean {
-  const path = join(rootPath, 'package.json')
-  if (!existsSync(path)) return false
-  try {
-    const pkg = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
-    return pkg[key] !== undefined
-  } catch {
-    return false
-  }
+function packageJsonHasKey(rootPath: string, key: string, stopDir: string | null = null): boolean {
+  return dirChain(rootPath, stopDir).some((dir) => {
+    const path = join(dir, 'package.json')
+    if (!existsSync(path)) return false
+    try {
+      const pkg = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+      return pkg[key] !== undefined
+    } catch {
+      return false
+    }
+  })
 }
 
 const PRETTIER_CONFIGS = [
@@ -22,12 +26,12 @@ const PRETTIER_CONFIGS = [
   'prettier.config.js', 'prettier.config.cjs', 'prettier.config.mjs',
 ]
 
-export function hasPrettierConfig(rootPath: string): boolean {
-  return anyExists(rootPath, PRETTIER_CONFIGS) || packageJsonHasKey(rootPath, 'prettier')
+export function hasPrettierConfig(rootPath: string, stopDir: string | null = null): boolean {
+  return anyExists(rootPath, PRETTIER_CONFIGS, stopDir) || packageJsonHasKey(rootPath, 'prettier', stopDir)
 }
 
-export function hasBiomeConfig(rootPath: string): boolean {
-  return anyExists(rootPath, ['biome.json', 'biome.jsonc'])
+export function hasBiomeConfig(rootPath: string, stopDir: string | null = null): boolean {
+  return anyExists(rootPath, ['biome.json', 'biome.jsonc'], stopDir)
 }
 
 const ESLINT_CONFIGS = [
@@ -35,8 +39,8 @@ const ESLINT_CONFIGS = [
   '.eslintrc', '.eslintrc.json', '.eslintrc.js', '.eslintrc.cjs', '.eslintrc.yml', '.eslintrc.yaml',
 ]
 
-export function hasEslintConfig(rootPath: string): boolean {
-  return anyExists(rootPath, ESLINT_CONFIGS) || packageJsonHasKey(rootPath, 'eslintConfig')
+export function hasEslintConfig(rootPath: string, stopDir: string | null = null): boolean {
+  return anyExists(rootPath, ESLINT_CONFIGS, stopDir) || packageJsonHasKey(rootPath, 'eslintConfig', stopDir)
 }
 
 export function hasTsconfig(rootPath: string): boolean {

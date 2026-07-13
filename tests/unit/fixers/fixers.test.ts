@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStyleFixer } from '../../../src/fixers/style.js'
@@ -45,6 +45,18 @@ describe('styleFixer', () => {
     expect(calls.map((c) => c.bin)).toEqual(['/fake/bin/biome', '/fake/bin/prettier'])
     expect(calls[0]?.args).toContain('--write')
     expect(calls[1]?.args).toContain('--write')
+  })
+
+  it('detects a formatter at the monorepo root (walk-up)', async () => {
+    const repo = join(mkdtempSync(join(tmpdir(), 'cliquet-fix-mono-')), 'repo')
+    mkdirSync(join(repo, 'apps', 'web'), { recursive: true })
+    mkdirSync(join(repo, '.git'))
+    writeFileSync(join(repo, '.prettierrc'), '{}')
+    const ctx = createProjectContext(join(repo, 'apps', 'web'), DEFAULT_BASELINE, 300_000)
+    const fixer = createStyleFixer({ run: fakeRun })
+    const outcome = await fixer.run({ ...ctx, resolveTool: (bin: string) => (bin === 'prettier' ? '/fake/bin/prettier' : null) })
+    expect(outcome.applied).toBe(true)
+    expect(calls.map((c) => c.bin)).toEqual(['/fake/bin/prettier'])
   })
 
   it('applies nothing when no formatter is configured', async () => {

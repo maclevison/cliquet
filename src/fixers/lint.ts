@@ -9,14 +9,14 @@ export function createLintFixer(deps: ToolRunnerDeps = {}): Fixer {
     name: 'lint',
     async run(ctx) {
       const applied: string[] = []
-      const eslintBin = hasEslintConfig(ctx.rootPath) ? ctx.resolveTool('eslint') : null
+      const eslintBin = hasEslintConfig(ctx.rootPath, ctx.repoRoot) ? ctx.resolveTool('eslint') : null
       if (eslintBin) {
         // exit 1 = non-fixable errors remain (fix still applied); 2+ = crash
         const r = await run(eslintBin, ['--fix', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
         if (toolRunFailed(r)) return toolFailureOutcome('eslint', r)
         applied.push('eslint --fix')
       }
-      const biomeBin = hasBiomeConfig(ctx.rootPath) ? ctx.resolveTool('biome') : null
+      const biomeBin = hasBiomeConfig(ctx.rootPath, ctx.repoRoot) ? ctx.resolveTool('biome') : null
       if (biomeBin) {
         const r = await run(biomeBin, ['check', '--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
         if (toolRunFailed(r)) return toolFailureOutcome('biome', r)

@@ -69,10 +69,10 @@ export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
 
     async run(ctx, baseline): Promise<GateResult> {
       const tools: Array<{ name: string; exec: (bin: string) => Promise<ToolOutcome>; bin: string | null }> = []
-      if (hasPrettierConfig(ctx.rootPath)) {
+      if (hasPrettierConfig(ctx.rootPath, ctx.repoRoot)) {
         tools.push({ name: 'prettier', exec: (b) => runPrettier(ctx, b), bin: ctx.resolveTool('prettier') })
       }
-      if (hasBiomeConfig(ctx.rootPath)) {
+      if (hasBiomeConfig(ctx.rootPath, ctx.repoRoot)) {
         tools.push({ name: 'biome', exec: (b) => runBiome(ctx, b), bin: ctx.resolveTool('biome') })
       }
       const runnable = tools.filter((t) => t.bin !== null)
