@@ -124,6 +124,9 @@ describe('expandExcludePatterns', () => {
   it('skips empty-string entries instead of expanding them into "" / "/**"', () => {
     expect(expandExcludePatterns([''])).toEqual([])
   })
+  it('trims trailing slashes (gitignore habit) so "gen/" still expands to a working subtree', () => {
+    expect(expandExcludePatterns(['gen/'])).toEqual(['gen', 'gen/**'])
+  })
 })
 
 describe('toPosix', () => {

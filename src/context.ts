@@ -57,15 +57,20 @@ export function toPosix(p: string): string {
 }
 
 /**
- * Bare-path ergonomics: a pattern that isn't a real glob (picomatch.scan().isGlob is the
- * NORMATIVE check, not a char regex — so a literal dir like `lib(v2)` still expands correctly)
+ * Bare-path ergonomics: a pattern where picomatch.scan().isGlob is false (the NORMATIVE check)
  * is treated as a subtree and expanded into `p` AND `p/**`. Real globs pass through untouched.
- * Empty-string entries are skipped (baseline validation permits them; expanding `''` would
- * produce `''`/`'/**'` patterns picomatch could misinterpret).
+ * Documented 0.3.0 limit: a literal dir name containing glob metacharacters (e.g. `lib(v2)` —
+ * parens are regex-group syntax, so it scans as a glob) is NOT expanded and behaves as a
+ * (probably unintended) glob; users must escape the metacharacters themselves.
+ * Trailing slashes are trimmed first (gitignore habit: `gen/` would otherwise expand to
+ * `gen//**`, which matches nothing). Empty entries are then skipped — baseline validation
+ * permits them, and `picomatch('')` throws "Expected pattern to be a non-empty string",
+ * which would crash createProjectContext.
  */
 export function expandExcludePatterns(exclude: string[]): string[] {
   const expanded: string[] = []
-  for (const pattern of exclude) {
+  for (const entry of exclude) {
+    const pattern = entry.replace(/\/+$/, '')
     if (pattern === '') continue
     if (picomatch.scan(pattern).isGlob) {
       expanded.push(pattern)
