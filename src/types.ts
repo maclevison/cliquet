@@ -23,6 +23,10 @@ export interface GateResult {
 
 export interface ProjectContext {
   rootPath: string
+  /** Git root at or above rootPath (walk-up boundary); null = not in a git repo. */
+  repoRoot: string | null
+  /** Dir between rootPath and repoRoot that CONTAINS a lockfile; audit cwd. Null = none. */
+  lockfileDir: string | null
   /** source_dirs directories that exist on disk (absolute). */
   sourceDirs: string[]
   packageManager: PackageManager | null

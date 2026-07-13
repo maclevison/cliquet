@@ -5,6 +5,8 @@ import type { Gate, ProjectContext } from '../../src/types.js'
 
 const fakeCtx: ProjectContext = {
   rootPath: '/fake',
+  repoRoot: null,
+  lockfileDir: null,
   sourceDirs: ['/fake/src'],
   packageManager: null,
   resolveTool: () => null,
