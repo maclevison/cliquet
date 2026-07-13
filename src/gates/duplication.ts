@@ -101,7 +101,10 @@ const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
   // Paths RELATIVE to cwd: jscpd's fast-glob silently matches nothing when an
   // absolute input path contains a dot-dir segment (e.g. a git worktree under
   // .claude/worktrees/) — same class of problem as ESLint 9's absolute paths.
-  const relativeDirs = dirs.map((dir) => relative(opts.cwd, dir) || '.')
+  const relativeDirs = dirs.map((dir) => {
+    const rel = relative(opts.cwd, dir)
+    return rel || '.'
+  })
   const result = await runCommand(
     process.execPath,
     [
