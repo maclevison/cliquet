@@ -56,7 +56,7 @@ describe('styleFixer', () => {
 
   it('ferramenta que crasha (exit 2) → applied: false com mensagem de erro', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
-    const fixer = createStyleFixer({ run: brokenRun({ exitCode: 2, stderr: 'SyntaxError: broken file' }) })
+    const fixer = createStyleFixer({ run: brokenRun({ exitCode: 2, failed: true, stderr: 'SyntaxError: broken file' }) })
     const outcome = await fixer.run(ctxWithTools(['prettier']))
     expect(outcome.applied).toBe(false)
     expect(outcome.message).toContain('prettier')
@@ -75,7 +75,8 @@ describe('lintFixer', () => {
 
   it('eslint --fix com exit 1 (erros não-corrigíveis restantes) ainda conta como aplicado', async () => {
     writeFileSync(join(root, 'eslint.config.mjs'), '')
-    const fixer = createLintFixer({ run: brokenRun({ exitCode: 1 }) })
+    // shape REAL do runCommand: execa marca failed: true para QUALQUER exit != 0
+    const fixer = createLintFixer({ run: brokenRun({ exitCode: 1, failed: true }) })
     const outcome = await fixer.run(ctxWithTools(['eslint']))
     expect(outcome.applied).toBe(true)
   })

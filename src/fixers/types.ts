@@ -12,12 +12,14 @@ export interface Fixer {
 }
 
 /**
- * Falha de FERRAMENTA (não do fix): timeout, processo que nem executou, ou crash.
- * Exit 0 e 1 contam como aplicado — eslint --fix sai 1 quando restam erros
- * não-corrigíveis e prettier --write sai != 0 só em erro real; 2+ é crash.
+ * Falha de FERRAMENTA (não do fix): timeout, processo que nem executou
+ * (exitCode null = spawn failure/signal), ou crash (exit 2+). Exit 0 e 1
+ * contam como aplicado — eslint --fix sai 1 quando restam erros não-corrigíveis
+ * e prettier --write sai != 0 só em erro real. NÃO use r.failed aqui: o execa
+ * marca failed: true para QUALQUER exit != 0, o que engoliria o exit 1 legítimo.
  */
 export function toolRunFailed(r: RunResult): boolean {
-  return r.timedOut || r.failed || (r.exitCode !== 0 && r.exitCode !== 1)
+  return r.timedOut || r.exitCode === null || (r.exitCode !== 0 && r.exitCode !== 1)
 }
 
 /** Outcome `applied: false` com o rabo do stderr/stdout para diagnóstico. */
