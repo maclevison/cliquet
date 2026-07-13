@@ -12,6 +12,9 @@ export const complexityGate: Gate = {
     const { warn_ccn, block_ccn } = baseline.complexity
     const all: FunctionComplexity[] = []
     for (const file of listSourceFiles(ctx.sourceDirs)) {
+      // SFCs .vue exigem extração do bloco <script> antes de parsear (pós-MVP);
+      // alimentar o arquivo inteiro no parser TS produziria medições sem sentido.
+      if (file.endsWith('.vue')) continue
       all.push(...measureFileComplexity(relative(ctx.rootPath, file), readFileSync(file, 'utf8')))
     }
     const blockers = all.filter((f) => f.ccn > block_ccn)

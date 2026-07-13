@@ -47,4 +47,14 @@ describe('complexityGate', () => {
     expect(r.status).toBe('fail')
     expect(r.actions.some((a) => a.severity === 'block')).toBe(true)
   })
+
+  it('ignora arquivos .vue (SFC exige extração de <script> — pós-MVP) sem lançar', async () => {
+    const sfc = `<template>\n  <div>{{ x }}</div>\n</template>\n<script>\n${fnWithCcn(12)}\n</script>\n`
+    writeFileSync(join(root, 'src', 'App.vue'), sfc)
+    const baseline = baselineWith(5, 10)
+    const r = await complexityGate.run(createProjectContext(root, baseline, 300_000), baseline)
+    expect(r.status).toBe('pass')
+    expect(r.actions).toHaveLength(0)
+    expect(r.current).toEqual({ max_ccn: 0, violations: 0, warnings: 0 })
+  })
 })

@@ -3,6 +3,14 @@ import { relative } from 'node:path'
 import type { Gate, GateResult } from '../types.js'
 import { listSourceFiles } from '../source-files.js'
 
+/** Conta linhas sem tratar o newline final como linha extra; arquivo vazio tem 0 linhas. */
+export function countLines(content: string): number {
+  if (content === '') return 0
+  const segments = content.split('\n')
+  if (segments[segments.length - 1] === '') segments.pop()
+  return segments.length
+}
+
 export const fileSizeGate: Gate = {
   name: 'file_size',
   label: 'File Size',
@@ -11,7 +19,7 @@ export const fileSizeGate: Gate = {
     const maxLines = baseline.file_size.max_lines
     const offenders: Array<{ file: string; lines: number }> = []
     for (const file of listSourceFiles(ctx.sourceDirs)) {
-      const lines = readFileSync(file, 'utf8').split('\n').length
+      const lines = countLines(readFileSync(file, 'utf8'))
       if (lines > maxLines) offenders.push({ file: relative(ctx.rootPath, file), lines })
     }
     const base = { max_lines: maxLines }

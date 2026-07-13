@@ -55,6 +55,16 @@ export const bundleSizeGate: Gate = {
       }
     }
     const m = measureBundle(distDir)
+    if (m.files.length === 0) {
+      // build quebrado/vazio não pode virar pass silencioso
+      return {
+        status: 'skip',
+        message: 'build dir exists but contains no bundle artifacts (.js/.mjs/.cjs/.css) — artifact measurement skipped',
+        baseline: base,
+        current: {},
+        actions: [],
+      }
+    }
     const limit = max_total_gzip_kb * (1 + tolerance_percent / 100)
     const totalRounded = Math.round(m.totalGzipKb * 100) / 100
     const current = { total_gzip_kb: totalRounded }

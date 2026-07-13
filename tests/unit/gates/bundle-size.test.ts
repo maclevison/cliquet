@@ -48,6 +48,15 @@ describe('bundleSizeGate', () => {
     expect(r.message).toContain('init')
   })
 
+  it('skip quando o dist existe mas não contém artefatos js/css (build quebrado não vira pass)', async () => {
+    mkdirSync(join(root, 'dist'))
+    writeFileSync(join(root, 'dist', 'index.html'), '<html></html>')
+    const baseline = baselineWith(100)
+    const r = await bundleSizeGate.run(createProjectContext(root, baseline, 300_000), baseline)
+    expect(r.status).toBe('skip')
+    expect(r.message).toContain('artifact')
+  })
+
   it('passa dentro do limite + tolerância e falha acima, listando top 5', async () => {
     mkdirSync(join(root, 'dist'))
     for (let i = 0; i < 7; i++) {

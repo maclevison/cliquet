@@ -47,4 +47,8 @@ describe('measureFileComplexity', () => {
     expect(results).toHaveLength(2)
     expect(results.every((r) => r.ccn === 2)).toBe(true)
   })
+
+  it('não lança em arquivo com sintaxe inválida (createSourceFile degrada silenciosamente)', () => {
+    expect(() => measureFileComplexity('a.ts', 'function {{{ ??? <<>> !!')).not.toThrow()
+  })
 })
