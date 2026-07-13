@@ -182,6 +182,14 @@ describe('cliquet check on a monorepo workspace (walk-up acceptance)', () => {
     const dir = copyFixture('monorepo')
     // created here, not committed in the fixture: git cannot track a nested .git
     mkdirSync(join(dir, '.git'))
+    // "install" eslint at the monorepo ROOT (hoisted .bin), like a real devDep:
+    // the resolver's PATH fallback deliberately rejects foreign node_modules/.bin,
+    // so the binary must be reachable through the fixture's own chain.
+    mkdirSync(join(dir, 'node_modules', '.bin'), { recursive: true })
+    symlinkSync(
+      join(import.meta.dirname, '..', '..', 'node_modules', '.bin', 'eslint'),
+      join(dir, 'node_modules', '.bin', 'eslint'),
+    )
     const code = await run(['check', '--path', join(dir, 'apps', 'web'), '--format', 'json'])
     const parsed = JSON.parse(out.join('')) as {
       result: string

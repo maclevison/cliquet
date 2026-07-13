@@ -33,6 +33,48 @@ describe('createToolResolver', () => {
     expect(resolve('cliquet-tool-inexistente-xyz')).toBeNull()
   })
 
+  it('ignores a FOREIGN project node_modules/.bin present on PATH (npm/npx prepends ancestors of the shell cwd)', () => {
+    const foreign = mkdtempSync(join(tmpdir(), 'cliquet-resolver-foreign-'))
+    mkdirSync(join(foreign, 'node_modules', '.bin'), { recursive: true })
+    const leaked = join(foreign, 'node_modules', '.bin', 'fake-leaked')
+    writeFileSync(leaked, '#!/bin/sh\n')
+    chmodSync(leaked, 0o755)
+    const dir = makeProject()
+    const resolve = createToolResolver(dir, { PATH: join(foreign, 'node_modules', '.bin') })
+    expect(resolve('fake-leaked')).toBeNull()
+  })
+
+  it('ignores npx cache directories on PATH (embedded tool copies)', () => {
+    const cache = mkdtempSync(join(tmpdir(), 'cliquet-resolver-npxcache-'))
+    const npxBin = join(cache, '_npx', 'abc123', 'node_modules', '.bin')
+    mkdirSync(npxBin, { recursive: true })
+    const embedded = join(npxBin, 'fake-embedded')
+    writeFileSync(embedded, '#!/bin/sh\n')
+    chmodSync(embedded, 0o755)
+    const dir = makeProject()
+    const resolve = createToolResolver(dir, { PATH: npxBin })
+    expect(resolve('fake-embedded')).toBeNull()
+  })
+
+  it('still accepts the OWN project .bin when it arrives via PATH (npm run prepends it)', () => {
+    const dir = makeProject()
+    const own = join(dir, 'node_modules', '.bin', 'fake-own')
+    writeFileSync(own, '#!/bin/sh\n')
+    chmodSync(own, 0o755)
+    // resolver rooted elsewhere would reject it; rooted at the project it must accept
+    const resolve = createToolResolver(dir, { PATH: join(dir, 'node_modules', '.bin') })
+    expect(resolve('fake-own')).toBe(own)
+  })
+
+  it('still accepts plain (non-node_modules) PATH dirs — global installs', () => {
+    const globalBin = mkdtempSync(join(tmpdir(), 'cliquet-resolver-global-'))
+    const tool = join(globalBin, 'fake-global')
+    writeFileSync(tool, '#!/bin/sh\n')
+    chmodSync(tool, 0o755)
+    const resolve = createToolResolver(makeProject(), { PATH: globalBin })
+    expect(resolve('fake-global')).toBe(tool)
+  })
+
   it('finds a binary hoisted to the monorepo root .bin', () => {
     const repo = join(mkdtempSync(join(tmpdir(), 'cliquet-resolver-mono-')), 'repo')
     mkdirSync(join(repo, 'apps', 'web'), { recursive: true })
