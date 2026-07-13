@@ -125,6 +125,22 @@ describe('styleGate', () => {
     expect(r.status).toBe('error')
   })
 
+  it('skip (not error) when Prettier <2 rejects the "." directory arg ("No matching files")', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    const gate = createStyleGate({
+      // Verbatim Prettier 1.19.1: exit 2, message on stderr. Prettier <2 doesn't expand ".".
+      run: async () => ({
+        exitCode: 2,
+        stdout: '',
+        stderr: '[error] No matching files. Patterns tried: . !**/node_modules/** !./node_modules/**',
+        timedOut: false,
+        failed: true,
+      }),
+    })
+    const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
+    expect(r.status).toBe('skip')
+  })
+
   it('skip when config exists but the binary does not resolve', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     const gate = createStyleGate({ run: async () => ok() })

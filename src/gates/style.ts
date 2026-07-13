@@ -60,6 +60,8 @@ export function parseBiomeDiagnostics(stdout: string): string[] {
 interface ToolOutcome {
   files: string[]
   error: string | null
+  /** Set when the tool ran but can't measure (degrade to skip, not error/false-green). */
+  skip?: string
 }
 
 export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
@@ -75,6 +77,13 @@ export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
     if (r.exitCode === 0) return { files: [], error: null }
     const files = parsePrettierListDifferent(r.stdout)
     if (r.exitCode === 1 && files.length > 0) return { files, error: null }
+    // Prettier <2 doesn't expand a "." directory arg (that landed in 2.0) — it exits 2 with
+    // "[error] No matching files. Patterns tried: .". Degrade to skip (can't measure with this
+    // prettier) instead of erroring. A modern prettier with genuinely nothing to format lands
+    // here too, and skip is equally correct there.
+    if (/No matching files/i.test(r.stderr) || /No matching files/i.test(r.stdout)) {
+      return { files: [], error: null, skip: 'prettier reported no matching files (Prettier <2 needs explicit globs, not ".")' }
+    }
     return { files: [], error: tailLines(r.stderr || r.stdout || 'prettier failed') }
   }
 
@@ -111,6 +120,8 @@ export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
       }
 
       const files: string[] = []
+      const skipped: string[] = []
+      let measured = 0
       for (const tool of runnable) {
         const outcome = await tool.exec(tool.bin as string)
         if (outcome.error !== null) {
@@ -122,7 +133,23 @@ export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
             actions: [],
           }
         }
+        if (outcome.skip !== undefined) {
+          skipped.push(`${tool.name}: ${outcome.skip}`)
+          continue
+        }
+        measured++
         files.push(...outcome.files)
+      }
+      // Every runnable formatter degraded (e.g. only Prettier <2 configured) → skip, not a
+      // false-green pass. If at least one tool measured, its files stand.
+      if (measured === 0 && skipped.length > 0) {
+        return {
+          status: 'skip',
+          message: skipped.join('; '),
+          baseline: { violations: baseline.style.violations },
+          current: {},
+          actions: [],
+        }
       }
 
       const violations = files.length
