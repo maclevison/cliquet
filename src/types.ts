@@ -33,6 +33,10 @@ export interface ProjectContext {
   /** node_modules/.bin → PATH → null */
   resolveTool(bin: string): string | null
   timeoutMs: number
+  /** Expanded `source_dirs.exclude` patterns (bare paths → [p, p/**]); feeds tool flags (jscpd --ignore, eslint --ignore-pattern). */
+  excludePatterns: string[]
+  /** Compiled once from excludePatterns with picomatch({ dot: true }); () => false when excludePatterns is empty. */
+  isExcluded(absPath: string): boolean
 }
 
 export interface Gate {

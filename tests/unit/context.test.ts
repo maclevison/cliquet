@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { createProjectContext, detectPackageManager, findLockfileDir } from '../../src/context.js'
+import { join, sep } from 'node:path'
+import {
+  createProjectContext,
+  detectPackageManager,
+  findLockfileDir,
+  expandExcludePatterns,
+  toPosix,
+} from '../../src/context.js'
 import { DEFAULT_BASELINE } from '../../src/baseline.js'
 
 let root: string
@@ -102,5 +108,52 @@ describe('createProjectContext monorepo fields', () => {
     const ctx = createProjectContext(root, DEFAULT_BASELINE, 300_000)
     expect(ctx.repoRoot).toBeNull()
     expect(ctx.lockfileDir).toBeNull()
+  })
+})
+
+describe('expandExcludePatterns', () => {
+  it('expands a bare path into subtree patterns', () => {
+    expect(expandExcludePatterns(['app/api/gen'])).toEqual(['app/api/gen', 'app/api/gen/**'])
+  })
+  it('passes real globs through untouched (picomatch.scan is the normative check)', () => {
+    expect(expandExcludePatterns(['**/*.gen.ts'])).toEqual(['**/*.gen.ts'])
+  })
+  it('empty in, empty out', () => {
+    expect(expandExcludePatterns([])).toEqual([])
+  })
+  it('skips empty-string entries instead of expanding them into "" / "/**"', () => {
+    expect(expandExcludePatterns([''])).toEqual([])
+  })
+})
+
+describe('toPosix', () => {
+  it('joins win32 separators into posix (portable unit for the win32 branch)', () => {
+    expect(toPosix('a\\b\\c'.split('\\').join(sep))).toBe('a/b/c')
+  })
+})
+
+describe('ctx.isExcluded', () => {
+  function ctxWithExclude(exclude: string[]) {
+    const baseline = { ...DEFAULT_BASELINE, source_dirs: { ...DEFAULT_BASELINE.source_dirs, exclude } }
+    return createProjectContext(root, baseline, 300_000)
+  }
+
+  it('matches subtree files for a bare-path exclude', () => {
+    const ctx = ctxWithExclude(['gen'])
+    expect(ctx.isExcluded(join(root, 'gen', 'x.ts'))).toBe(true)
+    expect(ctx.isExcluded(join(root, 'src', 'x.ts'))).toBe(false)
+  })
+  it('dot:true — patterns reach dot segments (.astro/**)', () => {
+    const ctx = ctxWithExclude(['.astro/**'])
+    expect(ctx.isExcluded(join(root, '.astro', 'types.d.ts'))).toBe(true)
+  })
+  it('empty exclude is the () => false fast path', () => {
+    const ctx = ctxWithExclude([])
+    expect(ctx.isExcluded(join(root, 'anything.ts'))).toBe(false)
+  })
+  it('drives a REAL glob through the compiled matcher (spec walker bullet)', () => {
+    const ctx = ctxWithExclude(['**/*.gen.ts'])
+    expect(ctx.isExcluded(join(root, 'src', 'api.gen.ts'))).toBe(true)
+    expect(ctx.isExcluded(join(root, 'src', 'api.ts'))).toBe(false)
   })
 })

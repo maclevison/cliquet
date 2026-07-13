@@ -11,6 +11,8 @@ const fakeCtx: ProjectContext = {
   packageManager: null,
   resolveTool: () => null,
   timeoutMs: 300_000,
+  excludePatterns: [],
+  isExcluded: () => false,
 }
 
 function fakeGate(name: string, status: 'pass' | 'fail' | 'skip', actions: object[] = []): Gate {

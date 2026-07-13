@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
+import picomatch from 'picomatch'
 import type { Baseline } from './baseline.js'
 import type { PackageManager, ProjectContext } from './types.js'
 import { createToolResolver } from './tool-resolver.js'
@@ -50,8 +51,41 @@ export function findLockfileDir(rootPath: string, stopDir: string | null = null)
   return null
 }
 
+/** Normalizes a path to `/`-separated segments (portable unit for the win32 branch). */
+export function toPosix(p: string): string {
+  return p.split(sep).join('/')
+}
+
+/**
+ * Bare-path ergonomics: a pattern that isn't a real glob (picomatch.scan().isGlob is the
+ * NORMATIVE check, not a char regex — so a literal dir like `lib(v2)` still expands correctly)
+ * is treated as a subtree and expanded into `p` AND `p/**`. Real globs pass through untouched.
+ * Empty-string entries are skipped (baseline validation permits them; expanding `''` would
+ * produce `''`/`'/**'` patterns picomatch could misinterpret).
+ */
+export function expandExcludePatterns(exclude: string[]): string[] {
+  const expanded: string[] = []
+  for (const pattern of exclude) {
+    if (pattern === '') continue
+    if (picomatch.scan(pattern).isGlob) {
+      expanded.push(pattern)
+    } else {
+      expanded.push(pattern, `${pattern}/**`)
+    }
+  }
+  return expanded
+}
+
+/** Compiled once with `{ dot: true }` so patterns like `.astro/**` reach dot segments; empty → `() => false` fast path. */
+function compileIsExcluded(rootPath: string, excludePatterns: string[]): (absPath: string) => boolean {
+  if (excludePatterns.length === 0) return () => false
+  const isMatch = picomatch(excludePatterns, { dot: true })
+  return (absPath: string) => isMatch(toPosix(relative(rootPath, absPath)))
+}
+
 export function createProjectContext(rootPath: string, baseline: Baseline, timeoutMs: number): ProjectContext {
   const repoRoot = findRepoRoot(rootPath)
+  const excludePatterns = expandExcludePatterns(baseline.source_dirs.exclude)
   return {
     rootPath,
     repoRoot,
@@ -60,5 +94,7 @@ export function createProjectContext(rootPath: string, baseline: Baseline, timeo
     packageManager: detectPackageManager(rootPath, repoRoot),
     resolveTool: createToolResolver(rootPath, process.env, repoRoot),
     timeoutMs,
+    excludePatterns,
+    isExcluded: compileIsExcluded(rootPath, excludePatterns),
   }
 }
