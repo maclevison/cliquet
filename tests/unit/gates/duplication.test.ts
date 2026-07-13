@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseJscpdReport, createDuplicationGate } from '../../../src/gates/duplication.js'
+import { parseJscpdReport, createDuplicationGate, buildJscpdArgs } from '../../../src/gates/duplication.js'
 import { DEFAULT_BASELINE, type Baseline } from '../../../src/baseline.js'
 import { createProjectContext } from '../../../src/context.js'
 
@@ -23,6 +23,19 @@ describe('parseJscpdReport', () => {
   })
 })
 
+describe('buildJscpdArgs', () => {
+  it('passes the expanded exclude patterns to jscpd via --ignore', () => {
+    expect(buildJscpdArgs(['src'], { minLines: 5, minTokens: 50, ignorePatterns: ['gen', 'gen/**'] }, '/tmp/out')).toEqual(
+      expect.arrayContaining(['--ignore', 'gen,gen/**']),
+    )
+  })
+
+  it('omits --ignore entirely when there are no patterns', () => {
+    const args = buildJscpdArgs(['src'], { minLines: 5, minTokens: 50, ignorePatterns: [] }, '/tmp/out')
+    expect(args).not.toEqual(expect.arrayContaining(['--ignore']))
+  })
+})
+
 describe('duplicationGate', () => {
   let root: string
   beforeEach(() => {
@@ -32,6 +45,18 @@ describe('duplicationGate', () => {
 
   function baselineWith(pct: number): Baseline {
     return { ...DEFAULT_BASELINE, duplication: { percentage: pct, min_lines: 5, min_tokens: 50 } }
+  }
+
+  function baselineWithExclude(exclude: string[]): Baseline {
+    return {
+      ...DEFAULT_BASELINE,
+      source_dirs: { ...DEFAULT_BASELINE.source_dirs, exclude },
+      duplication: { percentage: 2.0, min_lines: 5, min_tokens: 50 },
+    }
+  }
+
+  function ctxWithExclude(exclude: string[]) {
+    return createProjectContext(root, baselineWithExclude(exclude), 300_000)
   }
 
   it('passes when duplication ≤ baseline (via a fake runner that writes the report)', async () => {
@@ -108,6 +133,39 @@ describe('duplicationGate', () => {
       const r = await gate.run(createProjectContext(dotRoot, baseline, 300_000), baseline)
       expect(r.status).toBe('fail')
       expect((r.current.percentage as number) > 2).toBe(true)
+    }, 60_000)
+
+    it('guard over-approximation: duplication ONLY inside src/gen with exclude ["gen"] does not ERROR (real jscpd)', async () => {
+      // jscpd scans "src" and joins the scanDir with each --ignore pattern, so
+      // exclude ["gen"] (expanded to "gen","gen/**") ends up ignoring "src/gen/**"
+      // too — broader than the plain ctx matcher, which only excludes top-level
+      // "gen". jscpd finds nothing to scan under src → exit 0, no report. The
+      // guard must recognize these files as excluded the same way, or it wrongly
+      // reports a "glob mismatch" error instead of a synthesized 0% pass.
+      const dupBlock = Array.from({ length: 20 }, (_, i) => `export const v${i} = compute(${i}, "${i}")`).join('\n')
+      mkdirSync(join(root, 'src', 'gen'))
+      writeFileSync(join(root, 'src', 'gen', 'dup1.ts'), dupBlock)
+      writeFileSync(join(root, 'src', 'gen', 'dup2.ts'), dupBlock)
+      const gate = createDuplicationGate()
+      const r = await gate.run(ctxWithExclude(['gen']), baselineWithExclude(['gen']))
+      expect(r.status).toBe('pass')
+    }, 60_000)
+
+    it('exclude ["gen"] with duplication OUTSIDE gen still measures (real jscpd)', async () => {
+      const dupBlock = Array.from({ length: 20 }, (_, i) => `export const v${i} = compute(${i}, "${i}")`).join('\n')
+      writeFileSync(join(root, 'src', 'dup1.ts'), dupBlock)
+      writeFileSync(join(root, 'src', 'dup2.ts'), dupBlock)
+      mkdirSync(join(root, 'src', 'gen'))
+      const genDupBlock = Array.from({ length: 20 }, (_, i) => `export const g${i} = otherCompute(${i}, "${i}")`).join('\n')
+      writeFileSync(join(root, 'src', 'gen', 'also-dup1.ts'), genDupBlock)
+      writeFileSync(join(root, 'src', 'gen', 'also-dup2.ts'), genDupBlock)
+      const gate = createDuplicationGate()
+      const r = await gate.run(ctxWithExclude(['gen']), baselineWithExclude(['gen']))
+      expect(r.status).toBe('fail')
+      expect((r.current.percentage as number) > 2).toBe(true)
+      // gen pair is excluded from measurement: only the src/dup1↔dup2 clone is reported
+      expect(r.current.clones).toBe(1)
+      expect(r.actions[0]?.files.some((f) => f.includes('gen'))).toBe(false)
     }, 60_000)
   })
 })

@@ -2,9 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
+import picomatch from 'picomatch'
 import type { Gate, GateResult } from '../types.js'
 import { runCommand, tailLines } from '../process.js'
 import { listSourceFiles } from '../source-files.js'
+import { expandExcludePatterns, toPosix } from '../context.js'
 import { suggestBaselineUpdate } from './improvement.js'
 
 export interface DuplicationReport {
@@ -46,6 +48,10 @@ interface JscpdOptions {
   timeoutMs: number
   /** project root — report paths come out relative to it */
   cwd: string
+  /** expanded `source_dirs.exclude` patterns (bare paths → [p, p/**]); fed to jscpd's --ignore. */
+  ignorePatterns: string[]
+  /** compiled ctx matcher (by reference — never recompiled here); absent = no ctx-level exclusion. */
+  isExcluded?: (absPath: string) => boolean
 }
 
 /**
@@ -86,10 +92,71 @@ function resolveJscpdBin(): string | null {
 /** Runs the bundled jscpd; returns null on success or the error message. */
 type JscpdRunner = (dirs: string[], opts: JscpdOptions, outputDir: string) => Promise<string | null>
 
-/** true when at least one source file has >= minLines lines (a clone could exist). */
-function hasMeasurableSource(dirs: string[], minLines: number): boolean {
-  return listSourceFiles(dirs).some(
-    (file) => readFileSync(file, 'utf8').split('\n').length >= minLines,
+/**
+ * Builds the full jscpd arg list after the bin path. `relativeDirs` must already be
+ * relative to the invocation cwd (dot-dir segments break jscpd's fast-glob — see
+ * `defaultRunJscpd`). `--ignore` is a single comma-joined flag (jscpd's format) and is
+ * omitted entirely when there are no patterns.
+ */
+export function buildJscpdArgs(
+  relativeDirs: string[],
+  opts: Pick<JscpdOptions, 'minLines' | 'minTokens' | 'ignorePatterns'>,
+  outputDir: string,
+): string[] {
+  const args = [
+    ...relativeDirs,
+    '--reporters', 'json',
+    '--output', outputDir,
+    '--min-lines', String(opts.minLines),
+    '--min-tokens', String(opts.minTokens),
+    '--silent',
+  ]
+  if (opts.ignorePatterns.length > 0) {
+    args.push('--ignore', opts.ignorePatterns.join(','))
+  }
+  return args
+}
+
+/**
+ * Mirrors jscpd's own over-broad ignore matching (verified in `@jscpd/finder@4.0.5`):
+ * each `--ignore` pattern is additionally joined with every scanned dir (`join(scanDir,
+ * pattern)`), so excluding `gen` also ignores `src/gen/**` when `src` is a scanned dir —
+ * broader than the plain ctx matcher, which only matches from `rootPath`. Both `d/p` and
+ * `d/p/**` are added per (scanDir, pattern) pair regardless of whether `p` already ends in
+ * `/**` — harmless over-approximation, never a false green (see module doc).
+ */
+function jscpdVariantExcluded(
+  cwd: string,
+  relativeDirs: string[],
+  ignorePatterns: string[],
+): (absPath: string) => boolean {
+  if (ignorePatterns.length === 0 || relativeDirs.length === 0) return () => false
+  const variants = relativeDirs.flatMap((dir) =>
+    ignorePatterns.flatMap((pattern) => [`${dir}/${pattern}`, `${dir}/${pattern}/**`]),
+  )
+  const isMatch = picomatch(variants, { dot: true })
+  return (absPath: string) => isMatch(toPosix(relative(cwd, absPath)))
+}
+
+/**
+ * true when at least one source file has >= minLines lines (a clone could exist) AFTER
+ * over-approximating jscpd's exclusion: a file counts as measurable only when it is
+ * excluded by NEITHER the ctx predicate NOR jscpd's broader per-scanDir variant expansion.
+ * Over-approximating can only ever synthesize MORE 0% passes for files jscpd genuinely
+ * ignored — it can never produce a false green for a file jscpd actually scanned (if jscpd
+ * scanned anything measurable, a report exists and this guard never runs).
+ */
+function hasMeasurableSource(
+  dirs: string[],
+  minLines: number,
+  isExcluded: (absPath: string) => boolean,
+  cwd: string,
+  relativeDirs: string[],
+  ignorePatterns: string[],
+): boolean {
+  const jscpdExcluded = jscpdVariantExcluded(cwd, relativeDirs, ignorePatterns)
+  return listSourceFiles(dirs, isExcluded).some(
+    (file) => !jscpdExcluded(file) && readFileSync(file, 'utf8').split('\n').length >= minLines,
   )
 }
 
@@ -107,15 +174,7 @@ const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
   })
   const result = await runCommand(
     process.execPath,
-    [
-      jscpdBin,
-      ...relativeDirs,
-      '--reporters', 'json',
-      '--output', outputDir,
-      '--min-lines', String(opts.minLines),
-      '--min-tokens', String(opts.minTokens),
-      '--silent',
-    ],
+    [jscpdBin, ...buildJscpdArgs(relativeDirs, opts, outputDir)],
     { cwd: opts.cwd, timeoutMs: opts.timeoutMs },
   )
   if (result.timedOut) return 'jscpd timed out'
@@ -127,7 +186,10 @@ const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
     // GUARD: only synthesize when nothing is measurable. If measurable files
     // exist and jscpd still saw none, its glob missed them — a ratchet must
     // surface that as an ERROR, never as a silent 0% pass.
-    if (result.exitCode === 0 && hasMeasurableSource(dirs, opts.minLines)) {
+    if (
+      result.exitCode === 0 &&
+      hasMeasurableSource(dirs, opts.minLines, opts.isExcluded ?? (() => false), opts.cwd, relativeDirs, opts.ignorePatterns)
+    ) {
       return `jscpd matched no files although measurable sources exist (glob mismatch). ${tailLines(result.stderr || result.stdout || '', 3)}`.trim()
     }
     if (result.exitCode === 0) {
@@ -165,7 +227,14 @@ export function createDuplicationGate(deps: DuplicationGateDeps = {}): Gate {
       try {
         const error = await runJscpd(
           ctx.sourceDirs,
-          { minLines: min_lines, minTokens: min_tokens, timeoutMs: ctx.timeoutMs, cwd: ctx.rootPath },
+          {
+            minLines: min_lines,
+            minTokens: min_tokens,
+            timeoutMs: ctx.timeoutMs,
+            cwd: ctx.rootPath,
+            ignorePatterns: expandExcludePatterns(baseline.source_dirs.exclude),
+            isExcluded: ctx.isExcluded,
+          },
           outputDir,
         )
         if (error !== null) {
