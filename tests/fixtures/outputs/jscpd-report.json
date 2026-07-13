@@ -1,0 +1,19 @@
+{
+  "statistics": {
+    "total": { "lines": 1000, "duplicatedLines": 52, "percentage": 5.2, "clones": 2 }
+  },
+  "duplicates": [
+    {
+      "format": "typescript",
+      "lines": 40,
+      "firstFile": { "name": "src/a.ts", "start": 10, "end": 50 },
+      "secondFile": { "name": "src/b.ts", "start": 100, "end": 140 }
+    },
+    {
+      "format": "typescript",
+      "lines": 12,
+      "firstFile": { "name": "src/c.ts", "start": 1, "end": 12 },
+      "secondFile": { "name": "src/d.ts", "start": 20, "end": 31 }
+    }
+  ]
+}
