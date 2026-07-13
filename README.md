@@ -2,9 +2,39 @@
 
 > **Cliquet** (French for "ratchet", pronounced /kli.kɛ/ — "clee-KEH", silent *t*) — like a ratchet, quality only moves forward.
 
-Quality gate CLI for TypeScript/JavaScript projects that enforces the **ratchet principle**: quality metrics can only improve or stay the same — never regress.
+**The quality ratchet for TypeScript/JavaScript.** Cliquet turns your project's quality metrics into a one-way street: they can improve or stay the same — **never regress**. One command, nine quality gates, a single versioned baseline, and a CI that blocks any step backward.
 
-Cliquet orchestrates the quality tools your project already uses (ESLint, Prettier, Biome, tsc, Vitest, Jest), adds its own built-in checks (security, file size, complexity, bundle size), compares everything against a versioned baseline, and fails your CI when any metric gets worse.
+```bash
+npx cliquet init && npx cliquet check
+```
+
+Cliquet orchestrates the tools your project already uses (ESLint, Prettier, Biome, tsc, Vitest, Jest), adds its own built-in checks (security, duplication, complexity, file size, bundle size), compares everything against a baseline committed to your repo, and fails your CI when any metric gets worse.
+
+## Why Cliquet?
+
+- **Ratchet by baseline, not by diff.** Diff-based tools only check the code you touched. A versioned baseline catches regressions no diff ever shows: a bundle growing kilobyte by kilobyte, coverage dropping because someone deleted tests, duplication quietly piling up. The global number never gets worse — period.
+- **Zero-config gates.** Nine gates work out of the box. Cliquet detects the tools you already have by their config files — no plugins to wire, no metric tests to write, no YAML to learn.
+- **Heterogeneous metrics, one mechanism.** Security advisories, test coverage, duplication, cyclomatic complexity, and gzip bundle size all go through the same ratchet. No other tool holds the line across all of them at once.
+- **Security built in.** Beyond `npm audit`, 12 source-level security rules ship out of the box: hardcoded secrets, injection patterns, unsafe HTML, supply-chain red flags, and more.
+- **Made for the AI-coding era.** Cliquet detects when it runs inside an AI coding agent (Claude Code, Cursor, …) and switches to structured JSON automatically — a quality contract your agents can actually read and act on.
+- **Fixes, not just reports.** `cliquet fix` auto-repairs what can be repaired (style, lint, performance) and re-checks in the same run.
+- **Legacy-friendly adoption.** Set the baseline to where your codebase is today; the ratchet holds that line and only tightens from there. No need to pay off years of debt on day one.
+- **A simple devDependency.** No server, no dashboard, no account, no lock-in. The quality floor is a JSON file in your repo — reviewable in PRs, auditable in git history.
+
+## How it compares
+
+| | **Cliquet** | Betterer | qlty | Trunk Check | SonarQube |
+|---|---|---|---|---|---|
+| Regression model | Versioned baseline (global) | Snapshot (per test) | Diff (new issues) | Diff (hold-the-line) | Diff ("new code") |
+| Ready-made gates | 9, zero config | Write your own | Linters only | Linters only | Server rules |
+| Coverage ratchet | ✅ | DIY | ❌ | ❌ | New code only |
+| Bundle size gate | ✅ | DIY | ❌ | ❌ | ❌ |
+| Built-in security rules | ✅ 12 rules | ❌ | Via plugins | Via plugins | ✅ |
+| Auto-fix command | ✅ | ❌ | ✅ | ✅ | ❌ |
+| AI-agent output | ✅ auto-detected | ❌ | ❌ | ❌ | ❌ |
+| Runs as | npm devDependency | npm devDependency | Rust binary + platform | Binary + platform | Server/SaaS |
+
+Betterer shares the ratchet philosophy but asks you to write every metric as code — and its last release was an alpha over a year ago. qlty and Trunk are excellent multi-language meta-linters, but they prevent regression per diff, not per baseline, and skip coverage and bundle size entirely. Cliquet is the focused option: TypeScript/JavaScript, batteries included, actively maintained.
 
 ## Install
 
@@ -55,7 +85,9 @@ Tools are detected by their config files (`.prettierrc`, `biome.json`, `eslint.c
 
 **Adopting on a legacy codebase:** defaults are aspirational, so the first `check` may fail. Edit the baseline thresholds to the values `check` reports (never looser than measured) — from there the ratchet holds that line. Security findings are zero-tolerance and have no threshold: fix the code, or disable the specific rule under `security.rules`.
 
-## Output formats
+## Built for AI coding agents
+
+AI agents write more of your code every day — Cliquet makes sure they can't lower the bar. When it detects it is running inside an AI coding agent (Claude Code, Cursor, and others), it automatically switches to structured JSON output, so the agent gets machine-readable gate results, regressions, and prioritized actions instead of ANSI art. An explicit `--format` always wins.
 
 ```bash
 cliquet check                    # human-readable (default)
@@ -63,8 +95,6 @@ cliquet check --plain            # no ANSI colors
 cliquet check --format json      # structured output for CI and AI agents
 cliquet check --format github    # ::error::/::warning:: annotations
 ```
-
-When Cliquet detects it is running inside an AI coding agent (Claude Code, Cursor, and others), it automatically switches to JSON output. An explicit `--format` always wins.
 
 ### Exit codes
 
