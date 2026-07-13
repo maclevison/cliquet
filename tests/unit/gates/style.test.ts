@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStyleGate, parseBiomeDiagnostics } from '../../../src/gates/style.js'
@@ -130,5 +130,50 @@ describe('styleGate', () => {
     const gate = createStyleGate({ run: async () => ok() })
     const r = await gate.run(ctxWithTools([]), DEFAULT_BASELINE)
     expect(r.status).toBe('skip')
+  })
+})
+
+describe('prettier ignore-path chain (monorepo)', () => {
+  function mkMonorepo() {
+    const repo = join(mkdtempSync(join(tmpdir(), 'cliquet-mono-')), 'repo')
+    mkdirSync(join(repo, 'apps', 'web'), { recursive: true })
+    mkdirSync(join(repo, '.git'))
+    return { repo, web: join(repo, 'apps', 'web') }
+  }
+
+  it('passes every .prettierignore/.gitignore found up to the repo root via --ignore-path', async () => {
+    const { repo, web } = mkMonorepo()
+    writeFileSync(join(repo, '.prettierrc'), '{}')
+    writeFileSync(join(repo, '.prettierignore'), 'dist/\n')
+    writeFileSync(join(repo, '.gitignore'), 'coverage/\n')
+    writeFileSync(join(web, '.prettierignore'), 'generated/\n')
+    let seenArgs: string[] = []
+    const gate = createStyleGate({
+      run: async (_bin, args) => {
+        seenArgs = args
+        return { exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    const ctx = { ...createProjectContext(web, DEFAULT_BASELINE, 300_000), resolveTool: () => '/fake/bin/prettier' }
+    await gate.run(ctx, DEFAULT_BASELINE)
+    const ignorePaths = seenArgs.flatMap((a, i) => (a === '--ignore-path' ? [seenArgs[i + 1]] : []))
+    expect(ignorePaths).toContain(join(web, '.prettierignore'))
+    expect(ignorePaths).toContain(join(repo, '.prettierignore'))
+    expect(ignorePaths).toContain(join(repo, '.gitignore'))
+  })
+
+  it('passes NO --ignore-path when no ignore file exists (prettier defaults preserved)', async () => {
+    const { repo, web } = mkMonorepo()
+    writeFileSync(join(repo, '.prettierrc'), '{}')
+    let seenArgs: string[] = []
+    const gate = createStyleGate({
+      run: async (_bin, args) => {
+        seenArgs = args
+        return { exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    const ctx = { ...createProjectContext(web, DEFAULT_BASELINE, 300_000), resolveTool: () => '/fake/bin/prettier' }
+    await gate.run(ctx, DEFAULT_BASELINE)
+    expect(seenArgs).not.toContain('--ignore-path')
   })
 })

@@ -1,10 +1,31 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
 import { hasBiomeConfig, hasPrettierConfig } from '../detect.js'
 import { runCommand, tailLines, type RunOptions, type RunResult } from '../process.js'
+import { dirChain } from '../workspace.js'
 import { suggestBaselineUpdate } from './improvement.js'
 
 export interface ToolRunnerDeps {
   run?: (bin: string, args: string[], opts: RunOptions) => Promise<RunResult>
+}
+
+/**
+ * Prettier only reads .prettierignore/.gitignore from its cwd — a root-level
+ * ignore file (e.g. dist/) is invisible when the check runs in a workspace,
+ * so it formats minified bundles. Collect every ignore file up to the repo
+ * root as explicit --ignore-path flags (repeatable in prettier 3). Empty when
+ * none exist, preserving prettier's defaults.
+ */
+export function prettierIgnoreArgs(ctx: ProjectContext): string[] {
+  const args: string[] = []
+  for (const dir of dirChain(ctx.rootPath, ctx.repoRoot)) {
+    for (const name of ['.prettierignore', '.gitignore']) {
+      const path = join(dir, name)
+      if (existsSync(path)) args.push('--ignore-path', path)
+    }
+  }
+  return args
 }
 
 /** Parser: prettier --list-different prints one path per line. */
@@ -45,7 +66,10 @@ export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
   const run = deps.run ?? runCommand
 
   async function runPrettier(ctx: ProjectContext, bin: string): Promise<ToolOutcome> {
-    const r = await run(bin, ['--list-different', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+    const r = await run(bin, ['--list-different', ...prettierIgnoreArgs(ctx), '.'], {
+      cwd: ctx.rootPath,
+      timeoutMs: ctx.timeoutMs,
+    })
     if (r.timedOut) return { files: [], error: 'prettier timed out' }
     // exit 0 = clean; exit 1 = differences (stdout has the files); other = crash
     if (r.exitCode === 0) return { files: [], error: null }

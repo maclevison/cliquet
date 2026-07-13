@@ -1,7 +1,7 @@
 import { toolFailureOutcome, toolRunFailed, type Fixer } from './types.js'
 import { hasBiomeConfig, hasPrettierConfig } from '../detect.js'
 import { runCommand } from '../process.js'
-import type { ToolRunnerDeps } from '../gates/style.js'
+import { prettierIgnoreArgs, type ToolRunnerDeps } from '../gates/style.js'
 
 export function createStyleFixer(deps: ToolRunnerDeps = {}): Fixer {
   const run = deps.run ?? runCommand
@@ -18,7 +18,10 @@ export function createStyleFixer(deps: ToolRunnerDeps = {}): Fixer {
       }
       const prettierBin = hasPrettierConfig(ctx.rootPath, ctx.repoRoot) ? ctx.resolveTool('prettier') : null
       if (prettierBin) {
-        const r = await run(prettierBin, ['--write', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+        const r = await run(prettierBin, ['--write', ...prettierIgnoreArgs(ctx), '.'], {
+          cwd: ctx.rootPath,
+          timeoutMs: ctx.timeoutMs,
+        })
         if (toolRunFailed(r)) return toolFailureOutcome('prettier', r)
         applied.push('prettier --write')
       }
