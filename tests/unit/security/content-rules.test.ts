@@ -28,6 +28,15 @@ describe('client_exposed_secrets', () => {
   it('ignores legitimate public vars', () => {
     expect(run('client_exposed_secrets', 'process.env.NEXT_PUBLIC_APP_NAME')).toHaveLength(0)
   })
+  it('ignores key names that are public by design (site/publishable/public keys)', () => {
+    expect(run('client_exposed_secrets', 'import.meta.env.VITE_TURNSTILE_SITE_KEY')).toHaveLength(0)
+    expect(run('client_exposed_secrets', 'process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY')).toHaveLength(0)
+    expect(run('client_exposed_secrets', 'import.meta.env.VITE_STRIPE_PUBLIC_KEY')).toHaveLength(0)
+  })
+  it('still flags a sensitive var on the same line as an allowlisted one', () => {
+    const line = 'const a = env.VITE_TURNSTILE_SITE_KEY, b = env.VITE_API_SECRET'
+    expect(run('client_exposed_secrets', line)).toHaveLength(1)
+  })
 })
 
 describe('eval_usage', () => {

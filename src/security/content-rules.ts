@@ -23,6 +23,12 @@ function looksSecuritySensitive(line: string): boolean {
   return /token|secret|session|password|auth(?!or)|nonce/i.test(line)
 }
 
+const CLIENT_ENV_VAR = /(?:VITE_|NEXT_PUBLIC_|REACT_APP_|NUXT_PUBLIC_)\w+/gi
+const SENSITIVE_ENV_NAME = /SECRET|PRIVATE|PASSWORD|TOKEN|_KEY/i
+// Key names that are public by design: Turnstile/hCaptcha site keys, Stripe
+// publishable keys, generic "public keys" — exposing them is the whole point.
+const PUBLIC_BY_DESIGN_KEY = /(?:SITE|PUBLISHABLE|PUBLIC)_KEY/i
+
 export const CONTENT_RULES: Record<string, LineRule> = {
   hardcoded_secrets: patternRule('Possible hardcoded credential', [
     /AKIA[0-9A-Z]{16}/,
@@ -32,9 +38,15 @@ export const CONTENT_RULES: Record<string, LineRule> = {
     /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   ]),
 
-  client_exposed_secrets: patternRule('Sensitive name exposed in client-side env var', [
-    /(?:VITE_|NEXT_PUBLIC_|REACT_APP_|NUXT_PUBLIC_)\w*(?:SECRET|PRIVATE|PASSWORD|TOKEN|_KEY)\w*/i,
-  ]),
+  // Evaluated per VARIABLE NAME (not per line): a line-level allowlist would
+  // also silence a genuinely sensitive var sharing the line with a public one.
+  client_exposed_secrets: {
+    message: 'Sensitive name exposed in client-side env var',
+    matches: (line) =>
+      [...line.matchAll(CLIENT_ENV_VAR)].some(
+        (m) => SENSITIVE_ENV_NAME.test(m[0]) && !PUBLIC_BY_DESIGN_KEY.test(m[0]),
+      ),
+  },
 
   eval_usage: patternRule('Dynamic code evaluation', [
     /\beval\s*\(/,
