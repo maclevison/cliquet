@@ -1,0 +1,60 @@
+{
+  "schema": "cliquet/v1",
+  "source_dirs": {
+    "paths": [
+      "src",
+      "app",
+      "lib"
+    ]
+  },
+  "security": {
+    "advisories": 0,
+    "rules": {
+      "hardcoded_secrets": true,
+      "client_exposed_secrets": true,
+      "eval_usage": true,
+      "command_injection": true,
+      "sql_injection": true,
+      "unsafe_html": true,
+      "path_traversal": true,
+      "insecure_rng": true,
+      "tls_verification": true,
+      "unsafe_target_blank": true,
+      "gitignore_sensitive": true,
+      "package_freshness": false
+    }
+  },
+  "style": {
+    "violations": 0
+  },
+  "static_analysis": {
+    "errors": 0
+  },
+  "coverage": {
+    "percentage": 96
+  },
+  "duplication": {
+    "percentage": 2,
+    "min_lines": 5,
+    "min_tokens": 50
+  },
+  "file_size": {
+    "max_lines": 1000
+  },
+  "complexity": {
+    "warn_ccn": 20,
+    "block_ccn": 50
+  },
+  "performance": {
+    "violations": 0
+  },
+  "bundle_size": {
+    "max_total_gzip_kb": 28,
+    "tolerance_percent": 0,
+    "dist_dirs": [
+      "dist",
+      "build",
+      ".output"
+    ]
+  }
+}

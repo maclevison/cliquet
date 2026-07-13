@@ -45,7 +45,7 @@ function resolveGlobalOpts(cmd: Command, env: Record<string, string | undefined>
     throw new ConfigError(`--format inválido: ${format}`)
   }
   const timeoutSeconds = opts.timeout ? Number(opts.timeout) : 300
-  if (Number.isNaN(timeoutSeconds) || timeoutSeconds <= 0) throw new ConfigError(`--timeout inválido: ${opts.timeout}`)
+  if (timeoutSeconds <= 0 || Number.isNaN(timeoutSeconds)) throw new ConfigError(`--timeout inválido: ${opts.timeout}`)
   return { path, format, plain: opts.plain ?? false, timeoutMs: timeoutSeconds * 1000 }
 }
 
@@ -125,7 +125,7 @@ export async function main(
     .option('--force', 'overwrite existing baseline without asking')
     .action(async (cmdOpts: { force?: boolean }, cmd: Command) => {
       const opts = resolveGlobalOpts(cmd, env)
-      if (baselineExists(opts.path) && !cmdOpts.force) {
+      if (!cmdOpts.force && baselineExists(opts.path)) {
         io.stderr(`${BASELINE_FILENAME} já existe — use --force para sobrescrever\n`)
         exitCode = 2
         return

@@ -20,7 +20,10 @@ export function createPerformanceFixer(deps: ToolRunnerDeps = {}): Fixer {
         const configPath = writeInternalEslintConfig(configDir)
         // Paths relativos ao cwd (= ctx.rootPath) — mesmo racional do gate de performance:
         // absolutos fazem o ESLint 9 tratar tudo como "outside of the base path".
-        const relativeDirs = ctx.sourceDirs.map((dir) => relative(ctx.rootPath, dir) || '.')
+        const relativeDirs = ctx.sourceDirs.map((dir) => {
+          const rel = relative(ctx.rootPath, dir)
+          return rel || '.'
+        })
         // exit 1 = restaram erros não-corrigíveis (fix aplicado mesmo assim); 2+ = crash
         const r = await run(eslintBin, ['--no-config-lookup', '--config', configPath, '--fix', ...relativeDirs], {
           cwd: ctx.rootPath,

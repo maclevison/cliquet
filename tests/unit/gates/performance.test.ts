@@ -60,6 +60,22 @@ describe('performanceGate', () => {
     expect(r.status).toBe('fail')
     expect(r.current).toEqual({ violations: 2 })
   })
+
+  it('eslint recusa lintar (fatal "all files ignored", ex. sourceDir só com .ts): degrada para só o built-in, não é error', async () => {
+    writeFileSync(join(root, 'src', 'a.ts'), 'export const ok = 1')
+    const gate = createPerformanceGate({
+      run: async () => ({
+        exitCode: 2,
+        stdout: '',
+        stderr: 'You are linting "src", but all of the files matching the glob pattern "src" are ignored.',
+        timedOut: false,
+        failed: true,
+      }),
+    })
+    const r = await gate.run(ctxWithTools(['eslint']), DEFAULT_BASELINE)
+    expect(r.status).toBe('pass')
+    expect(r.current).toEqual({ violations: 0 })
+  })
 })
 
 describe('eslint real (smoke)', () => {
@@ -74,5 +90,17 @@ describe('eslint real (smoke)', () => {
     const r = await gate.run(ctx, DEFAULT_BASELINE)
     expect(r.status).toBe('fail')
     expect(r.current.violations as number).toBeGreaterThanOrEqual(2)
+  }, 60_000)
+
+  it('sourceDir só com .ts (sem parser TS configurado na config interna): não é error', async () => {
+    writeFileSync(join(root, 'src', 'only.ts'), 'export const ok: number = 1\n')
+    const eslintBin = join(process.cwd(), 'node_modules', '.bin', 'eslint') // devDependency do próprio cliquet
+    const ctx = {
+      ...createProjectContext(root, DEFAULT_BASELINE, 300_000),
+      resolveTool: (bin: string) => (bin === 'eslint' ? eslintBin : null),
+    }
+    const gate = createPerformanceGate() // sem deps → eslint real
+    const r = await gate.run(ctx, DEFAULT_BASELINE)
+    expect(r.status).not.toBe('error')
   }, 60_000)
 })

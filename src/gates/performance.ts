@@ -60,7 +60,10 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
           // Paths relativos ao cwd (= ctx.rootPath): passar diretórios absolutos faz o
           // ESLint 9 tratar tudo como "outside of the base path" e ignorar o glob inteiro.
           // Fallback de sourceDirs pode ser a própria raiz → relative() vira '' → usa '.'.
-          const relativeDirs = ctx.sourceDirs.map((dir) => relative(ctx.rootPath, dir) || '.')
+          const relativeDirs = ctx.sourceDirs.map((dir) => {
+            const rel = relative(ctx.rootPath, dir)
+            return rel || '.'
+          })
           const r = await run(
             eslintBin,
             ['--no-config-lookup', '--config', configPath, '--format', 'json', ...relativeDirs],
@@ -75,7 +78,13 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
             // degrada para só os built-ins. Regex estreita — padrões genéricos como
             // "invalid option" mascarariam erros reais de config no eslint 9.
             const unsupported = /no-config-lookup/i.test(r.stderr)
-            if (!unsupported) {
+            // A config interna não tem `files`, então só cobre as extensões default
+            // do eslint (.js/.mjs/.cjs/.jsx) — um sourceDir só com .ts (sem parser TS
+            // configurado aqui de propósito, spec §5 gate 8) faz o eslint 9 recusar
+            // com "all files matching the glob pattern are ignored". Não é falha da
+            // ferramenta: não há nada para as regras JS internas checarem ali.
+            const nothingToLint = /matching the glob pattern .* are ignored/i.test(r.stderr)
+            if (!unsupported && !nothingToLint) {
               return {
                 status: 'error',
                 message: `eslint (internal config): ${tailLines(r.stderr || r.stdout || 'failed')}`,

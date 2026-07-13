@@ -4,13 +4,20 @@
   "description": "Quality gate CLI for TS/JS — metrics can only improve, never regress",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=20.11" },
-  "bin": { "cliquet": "./dist/cli.js" },
-  "files": ["dist"],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "bin": {
+    "cliquet": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "quality": "npm run build && node dist/cli.js check --timeout 600"
   },
   "dependencies": {
     "commander": "^13.1.0",
@@ -20,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^9.20.0",
     "vitest": "^3.0.0"
   }
