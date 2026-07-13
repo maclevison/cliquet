@@ -89,7 +89,7 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       // Enabled content rules — single split per file in runContentRules
       const enabledContentRules = Object.keys(CONTENT_RULES).filter((name) => rules[name as keyof typeof rules])
       if (enabledContentRules.length > 0) {
-        for (const file of listSourceFiles(ctx.sourceDirs)) {
+        for (const file of listSourceFiles(ctx.sourceDirs, ctx.isExcluded)) {
           const content = readFileSync(file, 'utf8')
           const rel = relative(ctx.rootPath, file)
           findings.push(...runContentRules(rel, content, enabledContentRules))

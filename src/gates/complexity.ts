@@ -11,7 +11,7 @@ export const complexityGate: Gate = {
   async run(ctx, baseline): Promise<GateResult> {
     const { warn_ccn, block_ccn } = baseline.complexity
     const all: FunctionComplexity[] = []
-    for (const file of listSourceFiles(ctx.sourceDirs)) {
+    for (const file of listSourceFiles(ctx.sourceDirs, ctx.isExcluded)) {
       // .vue SFCs require extracting the <script> block before parsing (post-MVP);
       // feeding the whole file into the TS parser would produce meaningless measurements.
       if (file.endsWith('.vue')) continue

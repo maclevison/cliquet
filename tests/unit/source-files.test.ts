@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { listSourceFiles, resolveSourceDirs } from '../../src/source-files.js'
 
 let root: string
@@ -67,5 +67,26 @@ describe('listSourceFiles', () => {
     const files = listSourceFiles([root])
     expect(files).toHaveLength(1)
     expect(files[0]?.endsWith('ok.ts')).toBe(true)
+  })
+
+  it('filters files matched by the exclude predicate', () => {
+    mkdirSync(join(root, 'src', 'gen'), { recursive: true })
+    touch('src/keep.ts')
+    touch('src/gen/big.ts')
+    const isExcluded = (p: string) => p.includes(`${sep}gen${sep}`)
+    const files = listSourceFiles([join(root, 'src')], isExcluded)
+    expect(files).toHaveLength(1)
+    expect(files[0]?.endsWith('keep.ts')).toBe(true)
+  })
+
+  it('without a predicate behaves exactly as before', () => {
+    mkdirSync(join(root, 'src', 'deep'), { recursive: true })
+    touch('src/a.ts')
+    touch('src/deep/b.jsx')
+    touch('src/styles.css') // not a source file
+    const files = listSourceFiles([join(root, 'src')])
+    expect(files).toHaveLength(2)
+    expect(files.some((f) => f.endsWith('a.ts'))).toBe(true)
+    expect(files.some((f) => f.endsWith('b.jsx'))).toBe(true)
   })
 })

@@ -51,7 +51,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
       const locations: string[] = []
 
       // 1) built-in: condition order (independent of eslint — spec §5 gate 8)
-      for (const file of listSourceFiles(ctx.sourceDirs)) {
+      for (const file of listSourceFiles(ctx.sourceDirs, ctx.isExcluded)) {
         const rel = relative(ctx.rootPath, file)
         for (const f of analyzeConditionOrder(rel, readFileSync(file, 'utf8'))) {
           violations++
