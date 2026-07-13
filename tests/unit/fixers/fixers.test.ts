@@ -160,4 +160,26 @@ describe('performanceFixer', () => {
     await fixer.run(ctxWithTools(['eslint']))
     expect(calls[0]?.args).not.toContain('--ignore-pattern')
   })
+
+  it('benign "all files ignored" (internal JS rules vs a .vue/.ts tree) → quiet skip, not a failure dump', async () => {
+    // eslint 9 exits 2 here, same benign case the performance GATE degrades on — the fixer
+    // must not surface the scary "Oops! Something went wrong! ESLint" help text as a failure.
+    const fixer = createPerformanceFixer({
+      run: brokenRun({
+        exitCode: 2,
+        stderr: 'You are linting "app", but all of the files matching the glob pattern "app" are ignored.',
+      }),
+    })
+    const outcome = await fixer.run(ctxWithTools(['eslint']))
+    expect(outcome.applied).toBe(false)
+    expect(outcome.message).not.toContain('failed')
+    expect(outcome.message).not.toContain('Oops')
+  })
+
+  it('a genuine eslint crash (exit 2, unrelated stderr) still reports a failure', async () => {
+    const fixer = createPerformanceFixer({ run: brokenRun({ exitCode: 2, stderr: 'Cannot find module "eslint-plugin-x"' }) })
+    const outcome = await fixer.run(ctxWithTools(['eslint']))
+    expect(outcome.applied).toBe(false)
+    expect(outcome.message).toContain('failed')
+  })
 })

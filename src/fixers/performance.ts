@@ -31,7 +31,16 @@ export function createPerformanceFixer(deps: ToolRunnerDeps = {}): Fixer {
           ['--no-config-lookup', '--config', configPath, '--fix', ...relativeDirs, ...eslintIgnoreArgs(ctx)],
           { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs },
         )
-        if (toolRunFailed(r)) return toolFailureOutcome('eslint', r)
+        if (toolRunFailed(r)) {
+          // Same benign cases the performance GATE degrades on, not real failures: the internal
+          // JS-only config ignores a .vue/.ts-only source tree ("all files … are ignored"), and
+          // eslint <9 rejects --no-config-lookup ("--config-lookup"). Skip quietly instead of
+          // dumping eslint's "Oops! Something went wrong!" help text as a fixer failure.
+          if (/matching the glob pattern .* are ignored/i.test(r.stderr) || /config-lookup/i.test(r.stderr)) {
+            return { applied: false, message: 'no auto-fixable performance issues (internal JS rules matched no files)' }
+          }
+          return toolFailureOutcome('eslint', r)
+        }
       } finally {
         rmSync(configDir, { recursive: true, force: true })
       }
