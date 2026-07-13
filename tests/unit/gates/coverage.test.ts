@@ -192,6 +192,39 @@ describe('coverageGate', () => {
     expect(r.message).toContain('coverage provider')
   })
 
+  it('no-summary message lists failing tests as a likely cause instead of asserting reportsDirectory', async () => {
+    withVitest()
+    const gate = createCoverageGate({
+      run: async () => ({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'FAIL tests/planFormHelpers.test.ts > builds the plan form',
+        timedOut: false,
+        failed: true,
+      }),
+    })
+    const r = await gate.run(ctxWithTools(['vitest']), baselineWith(85))
+    expect(r.status).toBe('error')
+    expect(r.message).toContain('likely causes')
+    expect(r.message).toContain('tests failed')
+    expect(r.message).toContain('planFormHelpers') // the real failure surfaces
+  })
+
+  it('injects the json-summary reporter so projects need no coverage reporter config (regression lock)', async () => {
+    withVitest()
+    let seenArgs: string[] = []
+    const gate = createCoverageGate({
+      run: async (_bin, args) => {
+        seenArgs = args
+        mkdirSync(join(root, 'coverage'), { recursive: true })
+        cpSync(fixturePath, join(root, 'coverage', 'coverage-summary.json'))
+        return { exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    await gate.run(ctxWithTools(['vitest']), baselineWith(85))
+    expect(seenArgs).toContain('--coverage.reporter=json-summary')
+  })
+
   it('does NOT claim provider missing when tests merely crash under --coverage (provider only in stack trace paths)', async () => {
     withVitest()
     const gate = createCoverageGate({

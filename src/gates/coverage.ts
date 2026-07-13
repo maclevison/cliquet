@@ -82,9 +82,11 @@ export function createCoverageGate(deps: ToolRunnerDeps = {}): Gate {
           actions: [],
         }
       }
+      // Neutral phrasing: asserting a single cause here has misdiagnosed real
+      // failures twice (provider stack traces, then plain failing tests).
       return {
         status: 'error',
-        message: `${runner} ran but coverage/coverage-summary.json was not produced (custom reportsDirectory/coverageDirectory is unsupported in the MVP). Details: ${tailLines(stderr, 10)}`,
+        message: `${runner} ran but coverage/coverage-summary.json was not produced — likely causes: tests failed before coverage was written, or a custom reportsDirectory/coverageDirectory (unsupported). Details: ${tailLines(stderr, 10)}`,
         baseline: base,
         current: {},
         actions: [],
