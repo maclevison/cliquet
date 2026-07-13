@@ -27,7 +27,14 @@ export const INTERNAL_ESLINT_RULES: Record<string, string> = {
  */
 export function writeInternalEslintConfig(dir: string): string {
   const path = join(dir, 'cliquet-internal.eslint.config.mjs')
-  writeFileSync(path, `export default [{ rules: ${JSON.stringify(INTERNAL_ESLINT_RULES)} }]\n`)
+  // First entry (ignores only) = flat-config GLOBAL ignores: without it eslint
+  // lints build artifacts inside the source dirs (dist/ was 93% of the
+  // violations on a real monorepo run).
+  const ignores = ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.output/**', '**/coverage/**']
+  writeFileSync(
+    path,
+    `export default [{ ignores: ${JSON.stringify(ignores)} }, { rules: ${JSON.stringify(INTERNAL_ESLINT_RULES)} }]\n`,
+  )
   return path
 }
 

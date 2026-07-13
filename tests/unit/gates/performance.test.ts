@@ -92,6 +92,22 @@ describe('real eslint (smoke)', () => {
     expect(r.current.violations as number).toBeGreaterThanOrEqual(2)
   }, 60_000)
 
+  it('does NOT lint build artifacts (dist/ produced 93% of the violations on a real repo)', async () => {
+    mkdirSync(join(root, 'dist'))
+    writeFileSync(join(root, 'dist', 'bundle.js'), 'var x = 1\nexport default "a" + x\n')
+    writeFileSync(join(root, 'ok.js'), 'export const ok = 1\n')
+    const eslintBin = join(process.cwd(), 'node_modules', '.bin', 'eslint') // cliquet's own devDependency
+    const baseline = { ...DEFAULT_BASELINE, source_dirs: { paths: ['.'] } }
+    const ctx = {
+      ...createProjectContext(root, baseline, 300_000),
+      resolveTool: (bin: string) => (bin === 'eslint' ? eslintBin : null),
+    }
+    const gate = createPerformanceGate() // no deps → real eslint
+    const r = await gate.run(ctx, baseline)
+    expect(r.status).toBe('pass')
+    expect(r.current).toEqual({ violations: 0 })
+  }, 60_000)
+
   it('sourceDir with only .ts (no TS parser configured in the internal config): not an error', async () => {
     writeFileSync(join(root, 'src', 'only.ts'), 'export const ok: number = 1\n')
     const eslintBin = join(process.cwd(), 'node_modules', '.bin', 'eslint') // cliquet's own devDependency
