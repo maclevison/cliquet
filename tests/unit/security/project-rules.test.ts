@@ -1,0 +1,52 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { checkGitignoreSensitive, checkPackageFreshness } from '../../../src/security/project-rules.js'
+
+let root: string
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), 'cliquet-projrules-'))
+})
+
+describe('checkGitignoreSensitive', () => {
+  it('reporta entradas sensíveis ausentes', () => {
+    writeFileSync(join(root, '.gitignore'), 'node_modules/\n')
+    const findings = checkGitignoreSensitive(root)
+    expect(findings.map((f) => f.message).join(' ')).toContain('.env')
+    expect(findings).toHaveLength(3) // .env, *.pem, *.key
+  })
+
+  it('passa quando o .gitignore cobre tudo', () => {
+    writeFileSync(join(root, '.gitignore'), '.env\n*.pem\n*.key\n')
+    expect(checkGitignoreSensitive(root)).toHaveLength(0)
+  })
+
+  it('sem .gitignore, reporta as 3 entradas', () => {
+    expect(checkGitignoreSensitive(root)).toHaveLength(3)
+  })
+})
+
+describe('checkPackageFreshness', () => {
+  it('reporta dependência publicada há menos de 3 dias', async () => {
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'left-pad': '^1.0.0' } }))
+    const now = new Date('2026-07-13T00:00:00Z')
+    const fetcher = vi.fn().mockResolvedValue({ time: { modified: '2026-07-12T00:00:00Z' } })
+    const findings = await checkPackageFreshness(root, fetcher, now)
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.message).toContain('left-pad')
+  })
+
+  it('não reporta pacote antigo', async () => {
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'left-pad': '^1.0.0' } }))
+    const now = new Date('2026-07-13T00:00:00Z')
+    const fetcher = vi.fn().mockResolvedValue({ time: { modified: '2026-01-01T00:00:00Z' } })
+    expect(await checkPackageFreshness(root, fetcher, now)).toHaveLength(0)
+  })
+
+  it('skip silencioso quando a rede falha (spec §6)', async () => {
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'left-pad': '^1.0.0' } }))
+    const fetcher = vi.fn().mockRejectedValue(new Error('ENOTFOUND'))
+    expect(await checkPackageFreshness(root, fetcher, new Date())).toHaveLength(0)
+  })
+})
