@@ -6,6 +6,7 @@ import { listSourceFiles } from '../source-files.js'
 import { runCommand, tailLines } from '../process.js'
 import { parseEslintJson } from './static-analysis.js'
 import { analyzeConditionOrder } from './condition-order.js'
+import { suggestBaselineUpdate } from './improvement.js'
 import type { ToolRunnerDeps } from './style.js'
 
 export const INTERNAL_ESLINT_RULES: Record<string, string> = {
@@ -104,12 +105,16 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
 
       const current = { violations }
       if (violations <= base.violations) {
+        const passActions =
+          violations < base.violations
+            ? [suggestBaselineUpdate('performance', `performance violations improved to ${violations} (baseline ${base.violations})`)]
+            : []
         return {
           status: 'pass',
           message: violations === 0 ? 'No performance improvements needed' : `${violations} violations (baseline: ${base.violations})`,
           baseline: base,
           current,
-          actions: [],
+          actions: passActions,
         }
       }
       const actions: Action[] = [

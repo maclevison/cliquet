@@ -108,7 +108,7 @@ describe('cliquet check', () => {
     writeFileSync(join(dir, 'cliquet.baseline.json'), '{ broken')
     const code = await run(['check', '--path', dir])
     expect(code).toBe(2)
-    expect(errOut.join('')).toContain('Baseline inválido')
+    expect(errOut.join('')).toContain('Invalid baseline')
   })
 
   it('exit 2 para --path inexistente', async () => {

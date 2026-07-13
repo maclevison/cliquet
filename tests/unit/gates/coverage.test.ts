@@ -59,6 +59,39 @@ describe('coverageGate', () => {
     expect(r.message).toContain('vitest') // reporta qual runner usou (spec §5 gate 4)
   })
 
+  it('pass com MELHORA sugere UPDATE BASELINE como ação opcional (warn, spec §4)', async () => {
+    withVitest()
+    const gate = createCoverageGate({
+      run: async () => {
+        mkdirSync(join(root, 'coverage'), { recursive: true })
+        cpSync(fixturePath, join(root, 'coverage', 'coverage-summary.json')) // 87%
+        return { exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    const r = await gate.run(ctxWithTools(['vitest']), baselineWith(85))
+    expect(r.status).toBe('pass') // warn não muda status nem exit code
+    const suggest = r.actions.find((a) => a.type === 'UPDATE BASELINE')
+    expect(suggest).toBeDefined()
+    expect(suggest?.severity).toBe('warn')
+    expect(suggest?.priority).toBe(10)
+    expect(suggest?.message).toContain('improved to 87.00%')
+    expect(suggest?.message).toContain('cliquet.baseline.json')
+  })
+
+  it('pass EMPATADO com o baseline não sugere update', async () => {
+    withVitest()
+    const gate = createCoverageGate({
+      run: async () => {
+        mkdirSync(join(root, 'coverage'), { recursive: true })
+        cpSync(fixturePath, join(root, 'coverage', 'coverage-summary.json')) // 87%
+        return { exitCode: 0, stdout: '', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    const r = await gate.run(ctxWithTools(['vitest']), baselineWith(87))
+    expect(r.status).toBe('pass')
+    expect(r.actions).toEqual([])
+  })
+
   it('falha quando coverage < baseline', async () => {
     withVitest()
     const gate = createCoverageGate({

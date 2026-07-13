@@ -1,6 +1,7 @@
 import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
 import { hasBiomeConfig, hasEslintConfig, hasTsconfig } from '../detect.js'
 import { runCommand, tailLines } from '../process.js'
+import { suggestBaselineUpdate } from './improvement.js'
 import { parseBiomeDiagnostics, type ToolRunnerDeps } from './style.js'
 
 export interface AnalysisCounts {
@@ -117,7 +118,11 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
 
       const current = { errors }
       if (errors <= base.errors) {
-        return { status: 'pass', message: `${errors} errors (baseline: ${base.errors})`, baseline: base, current, actions: [] }
+        const passActions =
+          errors < base.errors
+            ? [suggestBaselineUpdate('static_analysis', `static analysis errors improved to ${errors} (baseline ${base.errors})`)]
+            : []
+        return { status: 'pass', message: `${errors} errors (baseline: ${base.errors})`, baseline: base, current, actions: passActions }
       }
       const actions: Action[] = [
         {

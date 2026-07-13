@@ -29,6 +29,17 @@ describe('formatJson', () => {
     expect(parsed.gates).toHaveLength(4)
     expect(parsed.actions[0].gate).toBe('style')
   })
+  it('gates[] não carregam actions embutidas — só o top-level actions[] (schema spec §9)', () => {
+    const parsed = JSON.parse(formatJson(sample, { pretty: false })) as {
+      gates: Array<Record<string, unknown>>
+      actions: unknown[]
+    }
+    for (const gate of parsed.gates) {
+      expect('actions' in gate).toBe(false)
+      expect(Object.keys(gate).sort()).toEqual(['baseline', 'current', 'label', 'message', 'name', 'status'])
+    }
+    expect(parsed.actions).toHaveLength(2) // top-level preservado
+  })
   it('pretty usa identação', () => {
     expect(formatJson(sample, { pretty: true })).toContain('\n  ')
   })

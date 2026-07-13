@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Gate, GateResult } from '../types.js'
 import { runCommand, tailLines } from '../process.js'
+import { suggestBaselineUpdate } from './improvement.js'
 
 export interface DuplicationReport {
   percentage: number
@@ -158,6 +159,12 @@ export function createDuplicationGate(deps: DuplicationGateDeps = {}): Gate {
       }
       const current = { percentage: report.percentage, clones: report.clones.length }
       if (report.percentage <= maxPct) {
+        // Sugestão de update só com MEDIÇÃO real abaixo do baseline — o 0%
+        // sintetizado não mediu nada e não deve induzir ratchet para 0.
+        const passActions =
+          !report.synthesized && report.percentage < maxPct
+            ? [suggestBaselineUpdate('duplication', `duplication improved to ${report.percentage.toFixed(2)}% (baseline ${maxPct.toFixed(2)}%)`)]
+            : []
         return {
           status: 'pass',
           message: report.synthesized
@@ -165,7 +172,7 @@ export function createDuplicationGate(deps: DuplicationGateDeps = {}): Gate {
             : `${report.percentage.toFixed(2)}% (baseline: ${maxPct.toFixed(2)}%, ${report.clones.length} clones)`,
           baseline: base,
           current,
-          actions: [],
+          actions: passActions,
         }
       }
       return {

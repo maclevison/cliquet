@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { Gate, GateResult } from '../types.js'
 import { detectTestRunner } from '../detect.js'
 import { runCommand, tailLines } from '../process.js'
+import { suggestBaselineUpdate } from './improvement.js'
 import type { ToolRunnerDeps } from './style.js'
 
 export function parseCoverageSummary(raw: string): number | null {
@@ -92,7 +93,11 @@ function buildResult(pct: number, base: { percentage: number }, runner: string):
   const current = { percentage: pct }
   const message = `${pct.toFixed(2)}% via ${runner} (baseline: ${base.percentage.toFixed(2)}%)`
   if (pct >= base.percentage) {
-    return { status: 'pass', message, baseline: base, current, actions: [] }
+    const actions =
+      pct > base.percentage
+        ? [suggestBaselineUpdate('coverage', `coverage improved to ${pct.toFixed(2)}% (baseline ${base.percentage.toFixed(2)}%)`)]
+        : []
+    return { status: 'pass', message, baseline: base, current, actions }
   }
   return {
     status: 'fail',

@@ -24,6 +24,18 @@ describe('parseBiomeDiagnostics', () => {
   it('retorna [] para JSON inválido', () => {
     expect(parseBiomeDiagnostics('boom')).toEqual([])
   })
+
+  it('conta só severity error/fatal — warnings do biome lint não são erro (spec §5)', () => {
+    const out = JSON.stringify({
+      diagnostics: [
+        { severity: 'error', location: { path: 'src/a.ts' } },
+        { severity: 'warning', location: { path: 'src/b.ts' } },
+        { severity: 'information', location: { path: 'src/c.ts' } },
+        { severity: 'fatal', location: { path: 'src/d.ts' } },
+      ],
+    })
+    expect(parseBiomeDiagnostics(out)).toEqual(['src/a.ts', 'src/d.ts'])
+  })
 })
 
 let root: string
@@ -50,12 +62,27 @@ describe('styleGate', () => {
     expect(r.status).toBe('skip')
   })
 
-  it('passa com prettier limpo', async () => {
+  it('passa com prettier limpo (empate com baseline 0 → sem sugestão de update)', async () => {
     writeFileSync(join(root, '.prettierrc'), '{}')
     const gate = createStyleGate({ run: async () => ok('') })
     const r = await gate.run(ctxWithTools(['prettier']), DEFAULT_BASELINE)
     expect(r.status).toBe('pass')
     expect(r.current).toEqual({ violations: 0 })
+    expect(r.actions).toEqual([])
+  })
+
+  it('pass com MELHORA (violações abaixo do baseline) sugere UPDATE BASELINE (warn, spec §4)', async () => {
+    writeFileSync(join(root, '.prettierrc'), '{}')
+    const gate = createStyleGate({ run: async () => ok('') }) // 0 violações medidas
+    const baseline = { ...DEFAULT_BASELINE, style: { violations: 2 } }
+    const r = await gate.run(ctxWithTools(['prettier']), baseline)
+    expect(r.status).toBe('pass')
+    const suggest = r.actions.find((a) => a.type === 'UPDATE BASELINE')
+    expect(suggest).toBeDefined()
+    expect(suggest?.severity).toBe('warn')
+    expect(suggest?.priority).toBe(10)
+    expect(suggest?.message).toContain('improved to 0')
+    expect(suggest?.message).toContain('cliquet.baseline.json')
   })
 
   it('falha contando arquivos do --list-different', async () => {

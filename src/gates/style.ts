@@ -1,6 +1,7 @@
 import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
 import { hasBiomeConfig, hasPrettierConfig } from '../detect.js'
 import { runCommand, tailLines, type RunOptions, type RunResult } from '../process.js'
+import { suggestBaselineUpdate } from './improvement.js'
 
 export interface ToolRunnerDeps {
   run?: (bin: string, args: string[], opts: RunOptions) => Promise<RunResult>
@@ -15,17 +16,21 @@ export function parsePrettierListDifferent(stdout: string): string[] {
  * Parser: biome --reporter=json → diagnostics[].location.path.
  * Shape validado contra saída real (fixture biome-format-diagnostics.json):
  * biome 2.x usa `location.path` como string; biome 1.x usava `location.path.file`.
+ * Só severity `error`/`fatal` conta (spec §5: warnings do biome lint NÃO são
+ * erro); diagnostic sem severity (shape legado 1.x) conta como erro.
  */
 export function parseBiomeDiagnostics(stdout: string): string[] {
   try {
     const parsed = JSON.parse(stdout) as {
-      diagnostics?: Array<{ location?: { path?: string | { file?: string } } }>
+      diagnostics?: Array<{ severity?: string; location?: { path?: string | { file?: string } } }>
     }
-    return (parsed.diagnostics ?? []).map((d) => {
-      const path = d.location?.path
-      if (typeof path === 'string') return path
-      return path?.file ?? '<unknown>'
-    })
+    return (parsed.diagnostics ?? [])
+      .filter((d) => d.severity === undefined || d.severity === 'error' || d.severity === 'fatal')
+      .map((d) => {
+        const path = d.location?.path
+        if (typeof path === 'string') return path
+        return path?.file ?? '<unknown>'
+      })
   } catch {
     return []
   }
@@ -100,7 +105,11 @@ export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
       const base = { violations: baseline.style.violations }
       const current = { violations }
       if (violations <= baseline.style.violations) {
-        return { status: 'pass', message: `${violations} violations (baseline: ${base.violations})`, baseline: base, current, actions: [] }
+        const passActions =
+          violations < baseline.style.violations
+            ? [suggestBaselineUpdate('style', `style violations improved to ${violations} (baseline ${base.violations})`)]
+            : []
+        return { status: 'pass', message: `${violations} violations (baseline: ${base.violations})`, baseline: base, current, actions: passActions }
       }
       const actions: Action[] = [
         {

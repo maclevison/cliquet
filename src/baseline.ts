@@ -76,14 +76,14 @@ export function loadBaseline(rootPath: string): Baseline {
   try {
     parsed = JSON.parse(readFileSync(path, 'utf8'))
   } catch (err) {
-    throw new ConfigError(`Baseline inválido em ${path}: ${(err as Error).message}`)
+    throw new ConfigError(`Invalid baseline at ${path}: ${(err as Error).message}`)
   }
   if (typeof parsed !== 'object' || parsed === null) {
-    throw new ConfigError(`Baseline inválido em ${path}: esperado um objeto JSON`)
+    throw new ConfigError(`Invalid baseline at ${path}: expected a JSON object`)
   }
   const raw = parsed as Record<string, unknown>
   if (raw.schema !== undefined && raw.schema !== SCHEMA_VERSION) {
-    throw new ConfigError(`Schema desconhecido "${String(raw.schema)}" — esperado "${SCHEMA_VERSION}"`)
+    throw new ConfigError(`Unknown schema "${String(raw.schema)}" — expected "${SCHEMA_VERSION}"`)
   }
   return mergeWithDefaults(raw)
 }
@@ -103,7 +103,7 @@ function mergeWithDefaults(raw: Record<string, unknown>): Baseline {
     const defaultValue = (DEFAULT_BASELINE as unknown as Record<string, unknown>)[key]
     if (isPlainObject(defaultValue)) {
       if (!isPlainObject(value)) {
-        throw new ConfigError(`Baseline inválido: "${key}" deve ser um objeto`)
+        throw new ConfigError(`Invalid baseline: "${key}" must be an object`)
       }
       out[key] = mergeSection(key, defaultValue, value)
     } else {
@@ -127,7 +127,7 @@ function mergeSection(
     const defaultValue = defaults[key]
     if (isPlainObject(defaultValue)) {
       if (!isPlainObject(value)) {
-        throw new ConfigError(`Baseline inválido: "${path}.${key}" deve ser um objeto`)
+        throw new ConfigError(`Invalid baseline: "${path}.${key}" must be an object`)
       }
       out[key] = mergeSection(`${path}.${key}`, defaultValue, value)
     } else {
@@ -141,12 +141,12 @@ function mergeSection(
 function validateLeaf(path: string, defaultValue: unknown, value: unknown): void {
   if (Array.isArray(defaultValue)) {
     if (!Array.isArray(value)) {
-      throw new ConfigError(`Baseline inválido: "${path}" deve ser um array`)
+      throw new ConfigError(`Invalid baseline: "${path}" must be an array`)
     }
     return
   }
   if (typeof value !== typeof defaultValue || Array.isArray(value) || isPlainObject(value)) {
-    throw new ConfigError(`Baseline inválido: "${path}" deve ser ${typeof defaultValue}`)
+    throw new ConfigError(`Invalid baseline: "${path}" must be a ${typeof defaultValue}`)
   }
 }
 

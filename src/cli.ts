@@ -45,13 +45,13 @@ interface GlobalOpts {
 function resolveGlobalOpts(cmd: Command, env: Record<string, string | undefined>): GlobalOpts {
   const opts = cmd.optsWithGlobals() as { path?: string; format?: string; plain?: boolean; timeout?: string }
   const path = resolve(opts.path ?? process.cwd())
-  if (!existsSync(path)) throw new ConfigError(`--path não existe: ${path}`)
+  if (!existsSync(path)) throw new ConfigError(`--path does not exist: ${path}`)
   const format = (opts.format ?? (isAiAgent(env) ? 'json' : 'human')) as GlobalOpts['format']
   if (!['human', 'json', 'json-pretty', 'github'].includes(format)) {
-    throw new ConfigError(`--format inválido: ${format}`)
+    throw new ConfigError(`invalid --format: ${format}`)
   }
   const timeoutSeconds = opts.timeout ? Number(opts.timeout) : 300
-  if (timeoutSeconds <= 0 || Number.isNaN(timeoutSeconds)) throw new ConfigError(`--timeout inválido: ${opts.timeout}`)
+  if (timeoutSeconds <= 0 || Number.isNaN(timeoutSeconds)) throw new ConfigError(`invalid --timeout: ${opts.timeout}`)
   return { path, format, plain: opts.plain ?? false, timeoutMs: timeoutSeconds * 1000 }
 }
 
@@ -87,7 +87,7 @@ function measuredBaseline(rootPath: string): Baseline {
 async function doCheck(opts: GlobalOpts, io: Io, runFixersFirst: boolean): Promise<number> {
   if (!baselineExists(opts.path)) {
     saveBaseline(opts.path, measuredBaseline(opts.path)) // auto-create (spec §4)
-    io.stderr(`${BASELINE_FILENAME} criado com defaults\n`)
+    io.stderr(`${BASELINE_FILENAME} created with defaults\n`)
   }
   const baseline = loadBaseline(opts.path)
   const ctx = createProjectContext(opts.path, baseline, opts.timeoutMs)
@@ -140,12 +140,12 @@ export async function main(
     .action(async (cmdOpts: { force?: boolean }, cmd: Command) => {
       const opts = resolveGlobalOpts(cmd, env)
       if (!cmdOpts.force && baselineExists(opts.path)) {
-        io.stderr(`${BASELINE_FILENAME} já existe — use --force para sobrescrever\n`)
+        io.stderr(`${BASELINE_FILENAME} already exists — use --force to overwrite\n`)
         exitCode = 2
         return
       }
       saveBaseline(opts.path, measuredBaseline(opts.path))
-      io.stdout(`${BASELINE_FILENAME} criado\n`)
+      io.stdout(`${BASELINE_FILENAME} created\n`)
     })
 
   program

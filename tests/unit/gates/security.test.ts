@@ -98,12 +98,25 @@ describe('securityGate', () => {
     expect(r.message).toContain('advisories')
   })
 
-  it('audit ausente (sem lockfile) não falha a gate', async () => {
+  it('audit ausente (sem lockfile) não falha a gate e não reporta advisories como medidos', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
     const r = await gateWith(null).run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.status).toBe('pass')
     expect(r.message).toContain('audit skipped')
+    // advisories não foi medido — reportar 0 seria um falso "medido limpo"
+    expect(r.current).toEqual({ findings: 0 })
+    expect('advisories' in r.current).toBe(false)
+  })
+
+  it('audit presente reporta advisories medidos em current', async () => {
+    writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
+    const baseline = baselineNoFreshness()
+    const r = await gateWith(fixture('npm-audit-clean.json')).run(
+      createProjectContext(root, baseline, 300_000),
+      baseline,
+    )
+    expect(r.current).toEqual({ advisories: 0, findings: 0 })
   })
 
   it('audit presente mas imparseável vira error — não pass silencioso', async () => {

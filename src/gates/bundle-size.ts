@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { extname, join, relative } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { Gate, GateResult } from '../types.js'
+import { suggestBaselineUpdate } from './improvement.js'
 
 const BUNDLE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.css'])
 
@@ -69,12 +70,17 @@ export const bundleSizeGate: Gate = {
     const totalRounded = Math.round(m.totalGzipKb * 100) / 100
     const current = { total_gzip_kb: totalRounded }
     if (m.totalGzipKb <= limit) {
+      // Melhora = medido abaixo do PISO do baseline (não do limite com tolerância)
+      const passActions =
+        m.totalGzipKb < max_total_gzip_kb
+          ? [suggestBaselineUpdate('bundle_size', `bundle size improved to ${totalRounded} KB gzip (baseline ${max_total_gzip_kb} KB)`)]
+          : []
       return {
         status: 'pass',
         message: `${totalRounded} KB gzip (baseline: ${max_total_gzip_kb} KB)`,
         baseline: base,
         current,
-        actions: [],
+        actions: passActions,
       }
     }
     const top5 = [...m.files].sort((a, b) => b.gzipKb - a.gzipKb).slice(0, 5)

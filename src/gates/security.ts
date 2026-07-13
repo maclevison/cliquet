@@ -139,11 +139,17 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
 
       const failed = findings.length > 0 || advisoriesFail
       const auditNote = audit === null ? 'audit skipped (no lockfile)' : `${criticalHigh} critical/high advisories`
+      // Audit não rodou → advisories NÃO foi medido: omitir a chave em vez de
+      // reportar 0 como se fosse uma medição limpa.
+      const current =
+        audit === null
+          ? { findings: findings.length }
+          : { advisories: criticalHigh, findings: findings.length }
       return {
         status: failed ? 'fail' : 'pass',
         message: `${auditNote}, ${findings.length} findings`,
         baseline: { advisories: baseline.security.advisories },
-        current: { advisories: criticalHigh, findings: findings.length },
+        current,
         actions,
       }
     },

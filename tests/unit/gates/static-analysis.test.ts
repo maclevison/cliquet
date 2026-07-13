@@ -99,6 +99,22 @@ describe('staticAnalysisGate', () => {
     expect(r.message).toContain('binary not found')
   })
 
+  it('biome lint: warnings não contam como erro (spec §5)', async () => {
+    writeFileSync(join(root, 'biome.json'), '{}')
+    const biomeOut = JSON.stringify({
+      diagnostics: [
+        { severity: 'error', location: { path: 'src/a.ts' } },
+        { severity: 'warning', location: { path: 'src/b.ts' } },
+      ],
+    })
+    const gate = createStaticAnalysisGate({
+      run: async (): Promise<RunResult> => ({ exitCode: 1, stdout: biomeOut, stderr: '', timedOut: false, failed: false }),
+    })
+    const r = await gate.run(ctxWithTools(['biome']), DEFAULT_BASELINE)
+    expect(r.status).toBe('fail')
+    expect(r.current).toEqual({ errors: 1 })
+  })
+
   it('soma eslint + biome quando ambos configurados (spec §5)', async () => {
     writeFileSync(join(root, 'eslint.config.mjs'), '')
     writeFileSync(join(root, 'biome.json'), '{}')
