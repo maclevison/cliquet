@@ -1,5 +1,15 @@
 import { describe, it, expect, afterAll } from 'vitest'
-import { mkdtempSync, mkdirSync, cpSync, existsSync, readFileSync, chmodSync, rmSync, symlinkSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  cpSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  chmodSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { main } from '../../src/cli.js'
@@ -232,5 +242,64 @@ describe('init guard (no package.json)', () => {
     const code = await run(['init', '--force', '--path', dir])
     expect(code).toBe(0)
     expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(true)
+  })
+})
+
+interface ParsedCheck {
+  result: string
+  actions: Array<{ gate: string; message: string; files: string[] }>
+  gates: Array<{ name: string; status: string }>
+}
+
+describe('cliquet check on the codegen fixture (exclude acceptance)', () => {
+  it('passes as shipped: gen/ is excluded, so file_size/duplication/security/complexity/performance all pass', async () => {
+    const dir = copyFixture('codegen')
+    const code = await run(['check', '--path', dir, '--format', 'json'])
+    const parsed = JSON.parse(out.join('')) as ParsedCheck
+    expect(parsed.result).toBe('pass')
+    expect(code).toBe(0)
+    const gates = new Map(parsed.gates.map((g) => [g.name, g.status]))
+    for (const name of ['file_size', 'duplication', 'security', 'complexity', 'performance']) {
+      expect(gates.get(name)).toBe('pass')
+    }
+  })
+
+  it('fails every walker-consuming gate once exclude is emptied — proving exclude is what saves each one', async () => {
+    const dir = copyFixture('codegen')
+    const baselinePath = join(dir, 'cliquet.baseline.json')
+    const baseline = JSON.parse(readFileSync(baselinePath, 'utf8')) as {
+      source_dirs: { paths: string[]; exclude: string[] }
+    }
+    baseline.source_dirs.exclude = []
+    writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`)
+
+    const code = await run(['check', '--path', dir, '--format', 'json'])
+    const parsed = JSON.parse(out.join('')) as ParsedCheck
+    expect(parsed.result).toBe('fail')
+    expect(code).toBe(1)
+
+    const gates = new Map(parsed.gates.map((g) => [g.name, g.status]))
+    expect(gates.get('file_size')).toBe('fail')
+    expect(gates.get('duplication')).toBe('fail')
+    expect(gates.get('security')).toBe('fail')
+    expect(gates.get('complexity')).toBe('fail')
+    expect(gates.get('performance')).toBe('fail')
+
+    const fileSizeAction = parsed.actions.find((a) => a.gate === 'file_size')
+    expect(fileSizeAction?.files.some((f) => f.includes('gen/generated.ts'))).toBe(true)
+
+    const duplicationAction = parsed.actions.find((a) => a.gate === 'duplication')
+    expect(duplicationAction?.files.some((f) => f.includes('gen/dup1.ts') || f.includes('gen/dup2.ts'))).toBe(true)
+
+    const securityAction = parsed.actions.find((a) => a.gate === 'security')
+    expect(securityAction?.files.some((f) => f.includes('gen/generated.ts:4') && f.includes('hardcoded_secrets'))).toBe(
+      true,
+    )
+
+    const complexityAction = parsed.actions.find((a) => a.gate === 'complexity')
+    expect(complexityAction?.files.some((f) => /CCN 52/.test(f))).toBe(true)
+
+    const performanceAction = parsed.actions.find((a) => a.gate === 'performance')
+    expect(performanceAction?.files.some((f) => f.includes('gen/generated.ts'))).toBe(true)
   })
 })
