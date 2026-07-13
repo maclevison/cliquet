@@ -300,6 +300,8 @@ describe('cliquet check on the codegen fixture (exclude acceptance)', () => {
     expect(complexityAction?.files.some((f) => /CCN 52/.test(f))).toBe(true)
 
     const performanceAction = parsed.actions.find((a) => a.gate === 'performance')
-    expect(performanceAction?.files.some((f) => f.includes('gen/generated.ts'))).toBe(true)
+    expect(
+      performanceAction?.files.some((f) => f.includes('gen/generated.ts:15') && /Expensive condition/.test(f)),
+    ).toBe(true)
   })
 })

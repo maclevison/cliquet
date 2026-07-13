@@ -1,3 +1,4 @@
+# satisfies gitignore_sensitive — without this, case 1 fails independent of exclude
 .env
 *.pem
 *.key
