@@ -82,10 +82,12 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
           }
           const parsed = parseEslintJson(r.stdout, ctx.rootPath)
           if (parsed === null) {
-            // eslint < 9 doesn't know the flag ("Invalid option '--no-config-lookup'"):
-            // degrade to just the built-ins. Narrow regex — generic patterns like
-            // "invalid option" would mask real config errors in eslint 9.
-            const unsupported = /no-config-lookup/i.test(r.stderr)
+            // eslint < 9 doesn't know the flag: degrade to just the built-ins. eslint 6's
+            // optionator strips the `--no-` prefix and reports the base name ("Invalid option
+            // '--config-lookup' - perhaps you meant '--config'?"), so match on the option name
+            // itself. Still narrow (names the exact option) — generic patterns like "invalid
+            // option" would mask real config errors in eslint 9.
+            const unsupported = /config-lookup/i.test(r.stderr)
             // The internal config has no `files`, so it only covers eslint's default
             // extensions (.js/.mjs/.cjs/.jsx) — a sourceDir with only .ts (no TS parser
             // configured here on purpose, spec §5 gate 8) makes eslint 9 refuse with

@@ -109,6 +109,24 @@ describe('performanceGate', () => {
     expect(r.status).toBe('pass')
     expect(r.current).toEqual({ violations: 0 })
   })
+
+  it('eslint < 9 rejects --no-config-lookup (real eslint 6 message says "--config-lookup"): falls back to built-in only, not an error', async () => {
+    writeFileSync(join(root, 'src', 'a.ts'), 'export const ok = 1')
+    const gate = createPerformanceGate({
+      // Verbatim eslint 6.8.0 stderr: optionator strips the `--no-` prefix and reports
+      // the base option name, so the old /no-config-lookup/ regex never matched.
+      run: async () => ({
+        exitCode: 2,
+        stdout: '',
+        stderr: "Invalid option '--config-lookup' - perhaps you meant '--config'?",
+        timedOut: false,
+        failed: true,
+      }),
+    })
+    const r = await gate.run(ctxWithTools(['eslint']), DEFAULT_BASELINE)
+    expect(r.status).toBe('pass')
+    expect(r.current).toEqual({ violations: 0 })
+  })
 })
 
 describe('real eslint (smoke)', () => {
