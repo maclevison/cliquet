@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import type { Fixer } from './types.js'
 import { runCommand } from '../process.js'
 import { writeInternalEslintConfig } from '../gates/performance.js'
@@ -18,7 +18,10 @@ export function createPerformanceFixer(deps: ToolRunnerDeps = {}): Fixer {
       const configDir = mkdtempSync(join(tmpdir(), 'cliquet-eslint-fix-'))
       try {
         const configPath = writeInternalEslintConfig(configDir)
-        await run(eslintBin, ['--no-config-lookup', '--config', configPath, '--fix', ...ctx.sourceDirs], {
+        // Paths relativos ao cwd (= ctx.rootPath) — mesmo racional do gate de performance:
+        // absolutos fazem o ESLint 9 tratar tudo como "outside of the base path".
+        const relativeDirs = ctx.sourceDirs.map((dir) => relative(ctx.rootPath, dir) || '.')
+        await run(eslintBin, ['--no-config-lookup', '--config', configPath, '--fix', ...relativeDirs], {
           cwd: ctx.rootPath,
           timeoutMs: ctx.timeoutMs,
         })
