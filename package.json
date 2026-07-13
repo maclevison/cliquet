@@ -1,6 +1,6 @@
 {
   "name": "@craverlab/cliquet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Quality gate CLI for TS/JS — metrics can only improve, never regress",
   "type": "module",
   "license": "MIT",
@@ -20,7 +20,7 @@
     "node": ">=20.11"
   },
   "bin": {
-    "cliquet": "./dist/cli.js"
+    "cliquet": "dist/cli.js"
   },
   "files": [
     "dist"

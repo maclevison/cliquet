@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Command } from 'commander'
@@ -196,7 +196,19 @@ export async function main(
   return exitCode
 }
 
-// Entry point do bin (dist/cli.js) — pathToFileURL lida com espaços no path
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Entry point do bin (dist/cli.js) — pathToFileURL lida com espaços no path.
+// realpathSync resolve o symlink que o npm cria em node_modules/.bin, sem o qual
+// argv[1] (symlink) nunca igualaria import.meta.url (arquivo real) e o bin sairia mudo.
+function isDirectInvocation(): boolean {
+  const invoked = process.argv[1]
+  if (!invoked) return false
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(invoked)).href
+  } catch {
+    return false
+  }
+}
+
+if (isDirectInvocation()) {
   process.exit(await main(process.argv))
 }

@@ -1,8 +1,9 @@
 import { describe, it, expect, afterAll } from 'vitest'
-import { mkdtempSync, cpSync, existsSync, readFileSync, chmodSync, rmSync } from 'node:fs'
+import { mkdtempSync, cpSync, existsSync, readFileSync, chmodSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { main } from '../../src/cli.js'
+import { runCommand } from '../../src/process.js'
 
 const FIXTURES = join(import.meta.dirname, '..', 'fixtures', 'projects')
 let out: string[]
@@ -43,6 +44,29 @@ describe('cliquet --version', () => {
     ) as { version: string }
     expect(out.join('')).toContain(pkg.version)
   })
+})
+
+describe('bin invocado via symlink (regressão: npm cria node_modules/.bin como symlink)', () => {
+  it('executa main quando argv[1] é um symlink para dist/cli.js', async () => {
+    const root = join(import.meta.dirname, '..', '..')
+    const build = await runCommand('npx', ['tsc', '-p', 'tsconfig.build.json'], {
+      cwd: root,
+      timeoutMs: 120_000,
+    })
+    expect(build.exitCode).toBe(0)
+
+    const binDir = mkdtempSync(join(tmpdir(), 'cliquet-bin-'))
+    tmpDirs.push(binDir)
+    const link = join(binDir, 'cliquet')
+    // npm chmoda o alvo do bin na instalação; imita isso para o exec via shebang funcionar
+    chmodSync(join(root, 'dist', 'cli.js'), 0o755)
+    symlinkSync(join(root, 'dist', 'cli.js'), link)
+
+    const r = await runCommand(link, ['--version'], { cwd: binDir, timeoutMs: 30_000 })
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }
+    expect(r.exitCode).toBe(0)
+    expect(r.stdout.trim()).toBe(pkg.version)
+  }, 180_000)
 })
 
 describe('cliquet init', () => {
