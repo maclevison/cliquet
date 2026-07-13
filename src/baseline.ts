@@ -63,7 +63,8 @@ export const DEFAULT_BASELINE: Baseline = {
   file_size: { max_lines: 1000 },
   complexity: { warn_ccn: 20, block_ccn: 50 },
   performance: { violations: 0 },
-  bundle_size: { max_total_gzip_kb: 0, tolerance_percent: 0, dist_dirs: ['dist', 'build', '.output'] },
+  // tolerance 0.5%: identical dist gzips differently across node/zlib versions — zero tolerance flaps dev vs CI
+  bundle_size: { max_total_gzip_kb: 0, tolerance_percent: 0.5, dist_dirs: ['dist', 'build', '.output'] },
 }
 
 export function baselineExists(rootPath: string): boolean {

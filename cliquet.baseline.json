@@ -50,7 +50,7 @@
   },
   "bundle_size": {
     "max_total_gzip_kb": 34,
-    "tolerance_percent": 0,
+    "tolerance_percent": 0.5,
     "dist_dirs": [
       "dist",
       "build",

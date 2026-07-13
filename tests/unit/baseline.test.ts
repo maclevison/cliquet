@@ -26,7 +26,9 @@ describe('DEFAULT_BASELINE', () => {
     expect(DEFAULT_BASELINE.complexity).toEqual({ warn_ccn: 20, block_ccn: 50 })
     expect(DEFAULT_BASELINE.bundle_size).toEqual({
       max_total_gzip_kb: 0,
-      tolerance_percent: 0,
+      // 0.5%: same dist gzips differently across node/zlib versions (389.88 vs
+      // 390.15 KB observed) — zero tolerance flaps between dev and CI.
+      tolerance_percent: 0.5,
       dist_dirs: ['dist', 'build', '.output'],
     })
     expect(Object.keys(DEFAULT_BASELINE.security.rules)).toHaveLength(12)
