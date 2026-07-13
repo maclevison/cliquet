@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createPerformanceGate, INTERNAL_ESLINT_RULES } from '../../../src/gates/performance.js'
-import { DEFAULT_BASELINE } from '../../../src/baseline.js'
+import { DEFAULT_BASELINE, type Baseline } from '../../../src/baseline.js'
 import { createProjectContext } from '../../../src/context.js'
 
 let root: string
@@ -12,9 +12,13 @@ beforeEach(() => {
   mkdirSync(join(root, 'src'))
 })
 
-function ctxWithTools(tools: string[]) {
-  const ctx = createProjectContext(root, DEFAULT_BASELINE, 300_000)
+function ctxWithTools(tools: string[], baseline: Baseline = DEFAULT_BASELINE) {
+  const ctx = createProjectContext(root, baseline, 300_000)
   return { ...ctx, resolveTool: (bin: string) => (tools.includes(bin) ? `/fake/bin/${bin}` : null) }
+}
+
+function baselineWithExclude(exclude: string[]): Baseline {
+  return { ...DEFAULT_BASELINE, source_dirs: { ...DEFAULT_BASELINE.source_dirs, exclude } }
 }
 
 describe('INTERNAL_ESLINT_RULES', () => {
@@ -59,6 +63,34 @@ describe('performanceGate', () => {
     const r = await gate.run(ctxWithTools(['eslint']), DEFAULT_BASELINE)
     expect(r.status).toBe('fail')
     expect(r.current).toEqual({ violations: 2 })
+  })
+
+  it('passes exclude patterns as --ignore-pattern to the internal-config eslint invocation', async () => {
+    writeFileSync(join(root, 'src', 'a.ts'), 'export const ok = 1')
+    const seenArgs: string[] = []
+    const gate = createPerformanceGate({
+      run: async (_bin, args) => {
+        seenArgs.push(...args)
+        return { exitCode: 0, stdout: '[]', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    const baseline = baselineWithExclude(['gen'])
+    await gate.run(ctxWithTools(['eslint'], baseline), baseline)
+    const pairs = seenArgs.flatMap((a, i) => (a === '--ignore-pattern' ? [seenArgs[i + 1]] : []))
+    expect(pairs).toEqual(['gen', 'gen/**'])
+  })
+
+  it('does not pass --ignore-pattern when source_dirs.exclude is empty', async () => {
+    writeFileSync(join(root, 'src', 'a.ts'), 'export const ok = 1')
+    const seenArgs: string[] = []
+    const gate = createPerformanceGate({
+      run: async (_bin, args) => {
+        seenArgs.push(...args)
+        return { exitCode: 0, stdout: '[]', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    await gate.run(ctxWithTools(['eslint']), DEFAULT_BASELINE)
+    expect(seenArgs).not.toContain('--ignore-pattern')
   })
 
   it('eslint refuses to lint (fatal "all files ignored", e.g. sourceDir with only .ts): falls back to built-in only, not an error', async () => {

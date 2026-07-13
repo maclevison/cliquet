@@ -4,7 +4,7 @@ import { join, relative } from 'node:path'
 import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
 import { listSourceFiles } from '../source-files.js'
 import { runCommand, tailLines } from '../process.js'
-import { parseEslintJson } from './static-analysis.js'
+import { eslintIgnoreArgs, parseEslintJson } from './static-analysis.js'
 import { analyzeConditionOrder } from './condition-order.js'
 import { suggestBaselineUpdate } from './improvement.js'
 import type { ToolRunnerDeps } from './style.js'
@@ -74,7 +74,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
           })
           const r = await run(
             eslintBin,
-            ['--no-config-lookup', '--config', configPath, '--format', 'json', ...relativeDirs],
+            ['--no-config-lookup', '--config', configPath, '--format', 'json', ...relativeDirs, ...eslintIgnoreArgs(ctx)],
             { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs },
           )
           if (r.timedOut) {

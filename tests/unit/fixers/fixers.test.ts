@@ -5,10 +5,14 @@ import { join } from 'node:path'
 import { createStyleFixer } from '../../../src/fixers/style.js'
 import { createLintFixer } from '../../../src/fixers/lint.js'
 import { createPerformanceFixer } from '../../../src/fixers/performance.js'
-import { DEFAULT_BASELINE } from '../../../src/baseline.js'
+import { DEFAULT_BASELINE, type Baseline } from '../../../src/baseline.js'
 import { createProjectContext } from '../../../src/context.js'
 import type { RunResult } from '../../../src/process.js'
 import type { ToolRunnerDeps } from '../../../src/gates/style.js'
+
+function baselineWithExclude(exclude: string[]): Baseline {
+  return { ...DEFAULT_BASELINE, source_dirs: { ...DEFAULT_BASELINE.source_dirs, exclude } }
+}
 
 let root: string
 let calls: Array<{ bin: string; args: string[] }>
@@ -30,8 +34,8 @@ function brokenRun(partial: Partial<RunResult>): NonNullable<ToolRunnerDeps['run
   }
 }
 
-function ctxWithTools(tools: string[]) {
-  const ctx = createProjectContext(root, DEFAULT_BASELINE, 300_000)
+function ctxWithTools(tools: string[], baseline: Baseline = DEFAULT_BASELINE) {
+  const ctx = createProjectContext(root, baseline, 300_000)
   return { ...ctx, resolveTool: (bin: string) => (tools.includes(bin) ? `/fake/bin/${bin}` : null) }
 }
 
@@ -101,6 +105,23 @@ describe('lintFixer', () => {
     expect(outcome.message).toContain('eslint')
     expect(outcome.message).toContain('ENOENT')
   })
+
+  it('passes exclude patterns as --ignore-pattern to the eslint --fix invocation', async () => {
+    writeFileSync(join(root, 'eslint.config.mjs'), '')
+    const fixer = createLintFixer({ run: fakeRun })
+    const baseline = baselineWithExclude(['gen'])
+    await fixer.run(ctxWithTools(['eslint'], baseline))
+    const args = calls[0]?.args ?? []
+    const pairs = args.flatMap((a, i) => (a === '--ignore-pattern' ? [args[i + 1]] : []))
+    expect(pairs).toEqual(['gen', 'gen/**'])
+  })
+
+  it('does not pass --ignore-pattern when source_dirs.exclude is empty', async () => {
+    writeFileSync(join(root, 'eslint.config.mjs'), '')
+    const fixer = createLintFixer({ run: fakeRun })
+    await fixer.run(ctxWithTools(['eslint']))
+    expect(calls[0]?.args).not.toContain('--ignore-pattern')
+  })
 })
 
 describe('performanceFixer', () => {
@@ -123,5 +144,20 @@ describe('performanceFixer', () => {
     const outcome = await fixer.run(ctxWithTools(['eslint']))
     expect(outcome.applied).toBe(false)
     expect(outcome.message).toContain('eslint')
+  })
+
+  it('passes exclude patterns as --ignore-pattern to the internal-config eslint --fix invocation', async () => {
+    const fixer = createPerformanceFixer({ run: fakeRun })
+    const baseline = baselineWithExclude(['gen'])
+    await fixer.run(ctxWithTools(['eslint'], baseline))
+    const args = calls[0]?.args ?? []
+    const pairs = args.flatMap((a, i) => (a === '--ignore-pattern' ? [args[i + 1]] : []))
+    expect(pairs).toEqual(['gen', 'gen/**'])
+  })
+
+  it('does not pass --ignore-pattern when source_dirs.exclude is empty', async () => {
+    const fixer = createPerformanceFixer({ run: fakeRun })
+    await fixer.run(ctxWithTools(['eslint']))
+    expect(calls[0]?.args).not.toContain('--ignore-pattern')
   })
 })

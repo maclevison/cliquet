@@ -7,9 +7,13 @@ import {
   parseTscOutput,
   createStaticAnalysisGate,
 } from '../../../src/gates/static-analysis.js'
-import { DEFAULT_BASELINE } from '../../../src/baseline.js'
+import { DEFAULT_BASELINE, type Baseline } from '../../../src/baseline.js'
 import { createProjectContext } from '../../../src/context.js'
 import type { RunResult } from '../../../src/process.js'
+
+function baselineWithExclude(exclude: string[]): Baseline {
+  return { ...DEFAULT_BASELINE, source_dirs: { ...DEFAULT_BASELINE.source_dirs, exclude } }
+}
 
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dirname, '..', '..', 'fixtures', 'outputs', name), 'utf8')
@@ -44,8 +48,8 @@ describe('staticAnalysisGate', () => {
     root = mkdtempSync(join(tmpdir(), 'cliquet-sa-'))
   })
 
-  function ctxWithTools(tools: string[]) {
-    const ctx = createProjectContext(root, DEFAULT_BASELINE, 300_000)
+  function ctxWithTools(tools: string[], baseline: Baseline = DEFAULT_BASELINE) {
+    const ctx = createProjectContext(root, baseline, 300_000)
     return { ...ctx, resolveTool: (bin: string) => (tools.includes(bin) ? `/fake/bin/${bin}` : null) }
   }
 
@@ -87,6 +91,34 @@ describe('staticAnalysisGate', () => {
     })
     const r = await gate.run(ctxWithTools(['eslint']), DEFAULT_BASELINE)
     expect(r.status).toBe('error')
+  })
+
+  it('passes exclude patterns as --ignore-pattern to the eslint invocation', async () => {
+    writeFileSync(join(root, 'eslint.config.mjs'), '')
+    const seenArgs: string[] = []
+    const gate = createStaticAnalysisGate({
+      run: async (_bin, args): Promise<RunResult> => {
+        seenArgs.push(...args)
+        return { exitCode: 0, stdout: '[]', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    const baseline = baselineWithExclude(['gen'])
+    await gate.run(ctxWithTools(['eslint'], baseline), baseline)
+    const pairs = seenArgs.flatMap((a, i) => (a === '--ignore-pattern' ? [seenArgs[i + 1]] : []))
+    expect(pairs).toEqual(['gen', 'gen/**'])
+  })
+
+  it('does not pass --ignore-pattern when source_dirs.exclude is empty', async () => {
+    writeFileSync(join(root, 'eslint.config.mjs'), '')
+    const seenArgs: string[] = []
+    const gate = createStaticAnalysisGate({
+      run: async (_bin, args): Promise<RunResult> => {
+        seenArgs.push(...args)
+        return { exitCode: 0, stdout: '[]', stderr: '', timedOut: false, failed: false }
+      },
+    })
+    await gate.run(ctxWithTools(['eslint']), DEFAULT_BASELINE)
+    expect(seenArgs).not.toContain('--ignore-pattern')
   })
 
   it('skip with a distinct message when config exists but the binary does not resolve (spec §5)', async () => {

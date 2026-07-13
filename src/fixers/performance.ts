@@ -4,6 +4,7 @@ import { join, relative } from 'node:path'
 import { toolFailureOutcome, toolRunFailed, type Fixer } from './types.js'
 import { runCommand } from '../process.js'
 import { writeInternalEslintConfig } from '../gates/performance.js'
+import { eslintIgnoreArgs } from '../gates/static-analysis.js'
 import type { ToolRunnerDeps } from '../gates/style.js'
 
 export function createPerformanceFixer(deps: ToolRunnerDeps = {}): Fixer {
@@ -25,10 +26,11 @@ export function createPerformanceFixer(deps: ToolRunnerDeps = {}): Fixer {
           return rel || '.'
         })
         // exit 1 = non-fixable errors remain (fix still applied); 2+ = crash
-        const r = await run(eslintBin, ['--no-config-lookup', '--config', configPath, '--fix', ...relativeDirs], {
-          cwd: ctx.rootPath,
-          timeoutMs: ctx.timeoutMs,
-        })
+        const r = await run(
+          eslintBin,
+          ['--no-config-lookup', '--config', configPath, '--fix', ...relativeDirs, ...eslintIgnoreArgs(ctx)],
+          { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs },
+        )
         if (toolRunFailed(r)) return toolFailureOutcome('eslint', r)
       } finally {
         rmSync(configDir, { recursive: true, force: true })

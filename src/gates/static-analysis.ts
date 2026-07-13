@@ -42,6 +42,11 @@ export function parseTscOutput(output: string): AnalysisCounts {
   return { errors: locations.length, locations }
 }
 
+/** `source_dirs.exclude` (expanded on `ctx`) as repeatable `--ignore-pattern` flags for eslint. */
+export function eslintIgnoreArgs(ctx: ProjectContext): string[] {
+  return ctx.excludePatterns.flatMap((pattern) => ['--ignore-pattern', pattern])
+}
+
 export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
   const run = deps.run ?? runCommand
 
@@ -58,7 +63,10 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
         jobs.push({
           name: 'eslint',
           exec: async () => {
-            const r = await run(eslintBin, ['--format', 'json', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+            const r = await run(eslintBin, ['--format', 'json', '.', ...eslintIgnoreArgs(ctx)], {
+              cwd: ctx.rootPath,
+              timeoutMs: ctx.timeoutMs,
+            })
             if (r.timedOut) return { error: 'eslint timed out' }
             const parsed = parseEslintJson(r.stdout, ctx.rootPath)
             if (parsed === null) return { error: tailLines(r.stderr || r.stdout || 'eslint failed') }

@@ -1,6 +1,7 @@
 import { toolFailureOutcome, toolRunFailed, type Fixer } from './types.js'
 import { hasBiomeConfig, hasEslintConfig } from '../detect.js'
 import { runCommand } from '../process.js'
+import { eslintIgnoreArgs } from '../gates/static-analysis.js'
 import type { ToolRunnerDeps } from '../gates/style.js'
 
 export function createLintFixer(deps: ToolRunnerDeps = {}): Fixer {
@@ -12,7 +13,7 @@ export function createLintFixer(deps: ToolRunnerDeps = {}): Fixer {
       const eslintBin = hasEslintConfig(ctx.rootPath, ctx.repoRoot) ? ctx.resolveTool('eslint') : null
       if (eslintBin) {
         // exit 1 = non-fixable errors remain (fix still applied); 2+ = crash
-        const r = await run(eslintBin, ['--fix', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
+        const r = await run(eslintBin, ['--fix', '.', ...eslintIgnoreArgs(ctx)], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
         if (toolRunFailed(r)) return toolFailureOutcome('eslint', r)
         applied.push('eslint --fix')
       }
