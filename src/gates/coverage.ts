@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Gate, GateResult } from '../types.js'
 import { detectTestRunner } from '../detect.js'
@@ -38,6 +38,11 @@ export function createCoverageGate(deps: ToolRunnerDeps = {}): Gate {
         return { status: 'skip', message: `${runner} detected but binary not found`, baseline: base, current: {}, actions: [] }
       }
 
+      // Remove o summary de um run ANTERIOR: como a leitura é summary-first, um
+      // arquivo stale seria confiado se o run atual falhasse sem produzir um novo.
+      const summaryPath = join(ctx.rootPath, 'coverage', 'coverage-summary.json')
+      rmSync(summaryPath, { force: true })
+
       const result = await run(bin, RUNNER_ARGS[runner] ?? [], {
         cwd: ctx.rootPath,
         timeoutMs: ctx.timeoutMs,
@@ -49,10 +54,10 @@ export function createCoverageGate(deps: ToolRunnerDeps = {}): Gate {
         return { status: 'error', message: `${runner} timed out`, baseline: base, current: {}, actions: [] }
       }
 
-      // Summary primeiro: se o relatório existe, ele é a verdade — mesmo com exit != 0
-      // (testes falhando ainda medem coverage). O stderr pode conter "coverage provider"
-      // por acaso (dump de um teste falhando), então NÃO pode decidir sozinho.
-      const summaryPath = join(ctx.rootPath, 'coverage', 'coverage-summary.json')
+      // Summary primeiro: se o relatório existe, é deste run (o stale foi deletado
+      // acima) e é a verdade — mesmo com exit != 0 (testes falhando ainda medem
+      // coverage). O stderr pode conter "coverage provider" por acaso (dump de um
+      // teste falhando), então NÃO pode decidir sozinho.
       if (existsSync(summaryPath)) {
         const pct = parseCoverageSummary(readFileSync(summaryPath, 'utf8'))
         if (pct === null) {

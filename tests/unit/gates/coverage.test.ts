@@ -114,6 +114,19 @@ describe('coverageGate', () => {
     }
   })
 
+  it('não confia em summary STALE: deleta o anterior antes de rodar o runner', async () => {
+    withVitest()
+    // summary de um run ANTERIOR já no disco
+    mkdirSync(join(root, 'coverage'), { recursive: true })
+    cpSync(fixturePath, join(root, 'coverage', 'coverage-summary.json'))
+    const gate = createCoverageGate({
+      // run atual falha e NÃO grava summary novo
+      run: async () => ({ exitCode: 1, stdout: '', stderr: 'boom', timedOut: false, failed: true }),
+    })
+    const r = await gate.run(ctxWithTools(['vitest']), baselineWith(85))
+    expect(r.status).toBe('error')
+  })
+
   it('error com orientação quando o provider de coverage falta', async () => {
     withVitest()
     const gate = createCoverageGate({
