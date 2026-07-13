@@ -1,0 +1,14 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "bad-lib": {
+      "name": "bad-lib",
+      "severity": "high",
+      "isDirect": true,
+      "via": [{ "title": "Prototype Pollution", "severity": "high", "url": "https://example.com/advisory" }]
+    }
+  },
+  "metadata": {
+    "vulnerabilities": { "info": 0, "low": 1, "moderate": 0, "high": 1, "critical": 1, "total": 3 }
+  }
+}
