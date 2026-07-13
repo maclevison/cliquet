@@ -89,6 +89,13 @@ Tools are detected by their config files (`.prettierrc`, `biome.json`, `eslint.c
 
 ## Built for AI coding agents
 
+> "I don't review code written by agents. I measure things like test coverage,
+> dependency structure, cyclomatic complexity, module sizes, mutation testing, etc.
+> Much can be inferred about the quality of the code from those metrics.
+> The code itself I leave to the AI."
+>
+> — [Robert C. Martin (Uncle Bob)](https://x.com/unclebobmartin/status/2044114698451476492), the tweet that inspired Cliquet
+
 AI agents write more of your code every day — Cliquet makes sure they can't lower the bar. When it detects it is running inside an AI coding agent (Claude Code, Cursor, and others), it automatically switches to structured JSON output, so the agent gets machine-readable gate results, regressions, and prioritized actions instead of ANSI art. An explicit `--format` always wins.
 
 ```bash
