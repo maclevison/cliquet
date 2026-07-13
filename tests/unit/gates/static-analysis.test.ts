@@ -118,6 +118,7 @@ describe('staticAnalysisGate', () => {
       },
     })
     await gate.run(ctxWithTools(['eslint']), DEFAULT_BASELINE)
+    expect(seenArgs).toContain('--format') // anchor: proves the eslint run actually happened
     expect(seenArgs).not.toContain('--ignore-pattern')
   })
 

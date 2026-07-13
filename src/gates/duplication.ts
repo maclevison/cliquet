@@ -6,7 +6,7 @@ import picomatch from 'picomatch'
 import type { Gate, GateResult } from '../types.js'
 import { runCommand, tailLines } from '../process.js'
 import { listSourceFiles } from '../source-files.js'
-import { expandExcludePatterns, toPosix } from '../context.js'
+import { toPosix } from '../context.js'
 import { suggestBaselineUpdate } from './improvement.js'
 
 export interface DuplicationReport {
@@ -233,7 +233,7 @@ export function createDuplicationGate(deps: DuplicationGateDeps = {}): Gate {
             minTokens: min_tokens,
             timeoutMs: ctx.timeoutMs,
             cwd: ctx.rootPath,
-            ignorePatterns: expandExcludePatterns(baseline.source_dirs.exclude),
+            ignorePatterns: ctx.excludePatterns,
             isExcluded: ctx.isExcluded,
           },
           outputDir,

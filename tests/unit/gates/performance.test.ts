@@ -90,6 +90,7 @@ describe('performanceGate', () => {
       },
     })
     await gate.run(ctxWithTools(['eslint']), DEFAULT_BASELINE)
+    expect(seenArgs).toContain('--no-config-lookup') // anchor: proves the eslint run actually happened
     expect(seenArgs).not.toContain('--ignore-pattern')
   })
 
