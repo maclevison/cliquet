@@ -1,0 +1,4 @@
+{
+  "schema": "cliquet/v1",
+  "security": { "advisories": 0, "rules": { "package_freshness": false } }
+}

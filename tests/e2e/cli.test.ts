@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest'
-import { mkdtempSync, cpSync, existsSync, readFileSync, chmodSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, cpSync, existsSync, readFileSync, chmodSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { main } from '../../src/cli.js'
@@ -174,5 +174,25 @@ describe('cliquet fix', () => {
     expect(code).toBe(0)
     const withCheck = await run(['fix', '--path', dir, '--format', 'json'])
     expect(withCheck).toBe(0)
+  })
+})
+
+describe('cliquet check on a monorepo workspace (walk-up acceptance)', () => {
+  it('sees the root .gitignore and root eslint config from apps/web', async () => {
+    const dir = copyFixture('monorepo')
+    // created here, not committed in the fixture: git cannot track a nested .git
+    mkdirSync(join(dir, '.git'))
+    const code = await run(['check', '--path', join(dir, 'apps', 'web'), '--format', 'json'])
+    const parsed = JSON.parse(out.join('')) as {
+      result: string
+      gates: Array<{ name: string; status: string }>
+    }
+    // root .gitignore (.env/*.pem/*.key) satisfies the rule via walk-up
+    expect(out.join('')).not.toContain('gitignore_sensitive')
+    // root eslint.config.mjs is detected from the workspace (was: skip)
+    const staticAnalysis = parsed.gates.find((g) => g.name === 'static_analysis')
+    expect(staticAnalysis?.status).not.toBe('skip')
+    expect(parsed.result).toBe('pass')
+    expect(code).toBe(0)
   })
 })
