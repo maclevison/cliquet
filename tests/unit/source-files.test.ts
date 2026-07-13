@@ -55,4 +55,17 @@ describe('listSourceFiles', () => {
     const files = listSourceFiles([join(root, 'src')])
     expect(files).toHaveLength(1)
   })
+
+  it('ignores EVERY dot-directory (nested worktrees under .claude/, .nuxt, .maestri)', () => {
+    // regression: a git worktree nested under .claude/worktrees/ was walked,
+    // doubling every built-in gate's counts on monorepo-root runs
+    for (const dotDir of ['.claude/worktrees/wt1/src', '.nuxt', '.maestri']) {
+      mkdirSync(join(root, dotDir), { recursive: true })
+      touch(`${dotDir}/x.ts`)
+    }
+    touch('ok.ts')
+    const files = listSourceFiles([root])
+    expect(files).toHaveLength(1)
+    expect(files[0]?.endsWith('ok.ts')).toBe(true)
+  })
 })
