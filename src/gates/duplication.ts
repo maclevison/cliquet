@@ -118,12 +118,12 @@ export function buildJscpdArgs(
 }
 
 /**
- * Mirrors jscpd's own over-broad ignore matching (verified in `@jscpd/finder@4.0.5`):
+ * Mirrors jscpd's own over-broad ignore matching (verified in `@jscpd/finder@4.2.5`):
  * each `--ignore` pattern is additionally joined with every scanned dir (`join(scanDir,
  * pattern)`), so excluding `gen` also ignores `src/gen/**` when `src` is a scanned dir —
  * broader than the plain ctx matcher, which only matches from `rootPath`. Both `d/p` and
  * `d/p/**` are added per (scanDir, pattern) pair regardless of whether `p` already ends in
- * `/**` — harmless over-approximation, never a false green (see module doc).
+ * `/**` — harmless over-approximation, never a false green (see `hasMeasurableSource`).
  */
 function jscpdVariantExcluded(
   cwd: string,
@@ -139,24 +139,20 @@ function jscpdVariantExcluded(
 }
 
 /**
- * true when at least one source file has >= minLines lines (a clone could exist) AFTER
- * over-approximating jscpd's exclusion: a file counts as measurable only when it is
- * excluded by NEITHER the ctx predicate NOR jscpd's broader per-scanDir variant expansion.
- * Over-approximating can only ever synthesize MORE 0% passes for files jscpd genuinely
- * ignored — it can never produce a false green for a file jscpd actually scanned (if jscpd
- * scanned anything measurable, a report exists and this guard never runs).
+ * true when at least one non-excluded source file has >= minLines lines (a clone could
+ * exist). The sole caller composes `isExcluded` to OVER-approximate jscpd's exclusion
+ * (ctx predicate OR jscpd's broader per-scanDir variant expansion). Direction matters:
+ * over-approximating can only ever synthesize MORE 0% passes for files jscpd genuinely
+ * ignored — it can never produce a false green for a file jscpd actually scanned (if
+ * jscpd scanned anything measurable, a report exists and this guard never runs).
  */
 function hasMeasurableSource(
   dirs: string[],
   minLines: number,
   isExcluded: (absPath: string) => boolean,
-  cwd: string,
-  relativeDirs: string[],
-  ignorePatterns: string[],
 ): boolean {
-  const jscpdExcluded = jscpdVariantExcluded(cwd, relativeDirs, ignorePatterns)
   return listSourceFiles(dirs, isExcluded).some(
-    (file) => !jscpdExcluded(file) && readFileSync(file, 'utf8').split('\n').length >= minLines,
+    (file) => readFileSync(file, 'utf8').split('\n').length >= minLines,
   )
 }
 
@@ -186,9 +182,14 @@ const defaultRunJscpd: JscpdRunner = async (dirs, opts, outputDir) => {
     // GUARD: only synthesize when nothing is measurable. If measurable files
     // exist and jscpd still saw none, its glob missed them — a ratchet must
     // surface that as an ERROR, never as a silent 0% pass.
+    // Compose the guard predicate to over-approximate jscpd (see hasMeasurableSource):
+    // a file counts as measurable only when excluded by NEITHER the ctx matcher NOR
+    // jscpd's broader per-scanDir variant expansion.
+    const ctxExcluded = opts.isExcluded ?? (() => false)
+    const jscpdExcluded = jscpdVariantExcluded(opts.cwd, relativeDirs, opts.ignorePatterns)
     if (
       result.exitCode === 0 &&
-      hasMeasurableSource(dirs, opts.minLines, opts.isExcluded ?? (() => false), opts.cwd, relativeDirs, opts.ignorePatterns)
+      hasMeasurableSource(dirs, opts.minLines, (f) => ctxExcluded(f) || jscpdExcluded(f))
     ) {
       return `jscpd matched no files although measurable sources exist (glob mismatch). ${tailLines(result.stderr || result.stdout || '', 3)}`.trim()
     }
