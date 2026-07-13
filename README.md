@@ -87,6 +87,23 @@ Tools are detected by their config files (`.prettierrc`, `biome.json`, `eslint.c
 
 **Adopting on a legacy codebase:** defaults are aspirational, so the first `check` may fail. Edit the baseline thresholds to the values `check` reports (never looser than measured) — from there the ratchet holds that line. Security findings are zero-tolerance and have no threshold: fix the code, or disable the specific rule under `security.rules`.
 
+### Scoping with `source_dirs`
+
+```jsonc
+{
+  "source_dirs": {
+    "paths": ["src", "app", "lib"],      // where cliquet looks for source files
+    "exclude": ["app/api/gen", "**/*.gen.ts"]  // what it must NOT score
+  }
+}
+```
+
+`exclude` takes [picomatch](https://github.com/micromatch/picomatch) globs relative to the project root. A bare path (`"app/api/gen"`) excludes the whole subtree; trailing slashes are tolerated. Use it for **committed codegen** — generated API clients, `.d.ts` outputs — that would otherwise drown the duplication/file-size ratchets in numbers you don't control.
+
+The exclusion reaches the built-in gates (file size, complexity, security content rules, condition-order), jscpd (duplication) and every eslint invocation — including the `cliquet fix` fixers, so auto-fixes never rewrite generated files. It does **not** reach prettier/biome/tsc/coverage: those tools have their own ignore mechanisms (`.prettierignore`, `biome.json`, tsconfig `exclude`, your test runner's coverage config).
+
+Patterns containing `,` or `{}` and negation patterns (`!`) are rejected at load with exit 2 — list patterns separately instead.
+
 ## Built for AI coding agents
 
 > "I don't review code written by agents. I measure things like test coverage,

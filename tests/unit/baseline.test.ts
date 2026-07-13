@@ -74,6 +74,14 @@ describe('source_dirs.exclude validation', () => {
     )
     expect(() => loadBaseline(dir)).toThrow(ConfigError)
   })
+
+  it('rejects a non-array source_dirs.exclude (e.g. a plain string)', () => {
+    writeFileSync(
+      join(dir, BASELINE_FILENAME),
+      JSON.stringify({ schema: 'cliquet/v1', source_dirs: { exclude: 'gen' } }),
+    )
+    expect(() => loadBaseline(dir)).toThrow(ConfigError)
+  })
 })
 
 describe('saveBaseline / loadBaseline', () => {
