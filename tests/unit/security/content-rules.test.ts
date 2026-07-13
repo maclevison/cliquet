@@ -68,6 +68,17 @@ describe('sql_injection', () => {
   it('ignores a parameterized query', () => {
     expect(run('sql_injection', 'db.query("SELECT * FROM users WHERE id = $1", [id])')).toHaveLength(0)
   })
+  it('ignores an HTTP client .raw()/.query() with a URL template (no SQL keyword)', () => {
+    // ofetch/ky: `.raw()` returns the raw Response — a REST URL path, not SQL.
+    expect(run('sql_injection', '$fetch.raw(`/projects/${id}/report`)')).toHaveLength(0)
+    expect(run('sql_injection', "api.raw('/users/' + id)")).toHaveLength(0)
+  })
+  it('still flags a dynamic ORDER BY / GROUP BY fragment (textbook column injection)', () => {
+    expect(run('sql_injection', 'db.raw(`ORDER BY ${col}`)')).toHaveLength(1)
+    expect(run('sql_injection', 'db.raw(`GROUP BY ${col}`)')).toHaveLength(1)
+    // but a URL segment named "order" is not ORDER BY
+    expect(run('sql_injection', '$fetch.raw(`/order/${id}`)')).toHaveLength(0)
+  })
 })
 
 describe('unsafe_html', () => {

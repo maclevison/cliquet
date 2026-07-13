@@ -28,6 +28,11 @@ const SENSITIVE_ENV_NAME = /SECRET|PRIVATE|PASSWORD|TOKEN|_KEY/i
 // Key names that are public by design: Turnstile/hCaptcha site keys, Stripe
 // publishable keys, generic "public keys" — exposing them is the whole point.
 const PUBLIC_BY_DESIGN_KEY = /(?:SITE|PUBLISHABLE|PUBLIC)_KEY/i
+// A SQL statement contains SQL keywords; a URL/path passed to an HTTP client's .raw()/.query()
+// does not. Bare ORDER/GROUP/LIMIT are URL-FP-prone (/order/, /rate-limit/), so the sort/group
+// clause is matched only in its two-word form.
+const SQL_KEYWORD =
+  /\b(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|MERGE|FROM|WHERE|VALUES|JOIN|UNION|INTO|DROP|TRUNCATE|ALTER)\b|\b(?:ORDER|GROUP)\s+BY\b/i
 
 export const CONTENT_RULES: Record<string, LineRule> = {
   hardcoded_secrets: patternRule('Possible hardcoded credential', [
@@ -59,10 +64,17 @@ export const CONTENT_RULES: Record<string, LineRule> = {
     /\b(?:exec|execSync)\s*\(\s*["'][^"']*["']\s*\+/,
   ]),
 
-  sql_injection: patternRule('SQL built from interpolated variables', [
-    /\.(?:query|raw)\s*\(\s*`[^`]*\$\{/,
-    /\.(?:query|raw)\s*\(\s*["'][^"']*["']\s*\+/,
-  ]),
+  // `.query(`/`.raw(` interpolation ANDed with a SQL keyword on the same line. Without the
+  // keyword this over-matched HTTP clients whose `.raw()`/`.query()` take a URL template
+  // (ofetch `$fetch.raw(`/users/${id}`)`) — a URL path has no SQL keyword, real SQL does. The
+  // multi-word `ORDER BY`/`GROUP BY` keeps the textbook dynamic-column injection (which can't
+  // be parameterized) without matching URL segments like `/order/${id}`.
+  sql_injection: {
+    message: 'SQL built from interpolated variables',
+    matches: (line) =>
+      (/\.(?:query|raw)\s*\(\s*`[^`]*\$\{/.test(line) || /\.(?:query|raw)\s*\(\s*["'][^"']*["']\s*\+/.test(line)) &&
+      SQL_KEYWORD.test(line),
+  },
 
   // Patterns for the unsafe HTML attributes (React/Vue), built via concatenation
   // (rather than as literals) so that this very file — which must CONTAIN those
