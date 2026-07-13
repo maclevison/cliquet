@@ -12,7 +12,8 @@ export interface RunResult {
 export interface RunOptions {
   cwd: string
   timeoutMs: number
-  env?: Record<string, string>
+  /** Com o extendEnv padrão do execa, chave com valor `undefined` é REMOVIDA do env do filho. */
+  env?: Record<string, string | undefined>
 }
 
 export async function runCommand(file: string, args: string[], opts: RunOptions): Promise<RunResult> {

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -118,15 +118,20 @@ export function createDuplicationGate(deps: DuplicationGateDeps = {}): Gate {
       const { percentage: maxPct, min_lines, min_tokens } = baseline.duplication
       const base = { percentage: maxPct }
       const outputDir = mkdtempSync(join(tmpdir(), 'cliquet-jscpd-'))
-      const error = await runJscpd(
-        ctx.sourceDirs,
-        { minLines: min_lines, minTokens: min_tokens, timeoutMs: ctx.timeoutMs, cwd: ctx.rootPath },
-        outputDir,
-      )
-      if (error !== null) {
-        return { status: 'error', message: `jscpd: ${error}`, baseline: base, current: {}, actions: [] }
+      let report: DuplicationReport | null
+      try {
+        const error = await runJscpd(
+          ctx.sourceDirs,
+          { minLines: min_lines, minTokens: min_tokens, timeoutMs: ctx.timeoutMs, cwd: ctx.rootPath },
+          outputDir,
+        )
+        if (error !== null) {
+          return { status: 'error', message: `jscpd: ${error}`, baseline: base, current: {}, actions: [] }
+        }
+        report = parseJscpdReport(readFileSync(join(outputDir, 'jscpd-report.json'), 'utf8'))
+      } finally {
+        rmSync(outputDir, { recursive: true, force: true })
       }
-      const report = parseJscpdReport(readFileSync(join(outputDir, 'jscpd-report.json'), 'utf8'))
       if (report === null) {
         return { status: 'error', message: 'jscpd report is malformed', baseline: base, current: {}, actions: [] }
       }

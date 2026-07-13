@@ -1,9 +1,9 @@
 import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
 import { hasBiomeConfig, hasPrettierConfig } from '../detect.js'
-import { runCommand, tailLines, type RunResult } from '../process.js'
+import { runCommand, tailLines, type RunOptions, type RunResult } from '../process.js'
 
 export interface ToolRunnerDeps {
-  run?: (bin: string, args: string[], opts: { cwd: string; timeoutMs: number }) => Promise<RunResult>
+  run?: (bin: string, args: string[], opts: RunOptions) => Promise<RunResult>
 }
 
 /** Parser: prettier --list-different imprime um path por linha. */

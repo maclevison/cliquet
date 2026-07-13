@@ -1,4 +1,5 @@
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
 import { listSourceFiles } from '../source-files.js'
@@ -17,12 +18,14 @@ export const INTERNAL_ESLINT_RULES: Record<string, string> = {
 }
 
 /**
- * Grava a flat config interna NA RAIZ do projeto-alvo (globs de flat config
- * resolvem relativos à config) e retorna o path. Caller remove em finally.
- * Sem chave `files`: o objeto se aplica a todo arquivo lintado.
+ * Grava a flat config interna num diretório TEMPORÁRIO (fora do repo do usuário —
+ * um SIGKILL no meio da gate não deixa lixo no projeto) e retorna o path. Caller
+ * remove o diretório em finally. Sem chave `files`: o objeto se aplica a todo
+ * arquivo lintado. Verificado empiricamente (ESLint 9.39): `--config <path fora
+ * do cwd>` sem `files` linta normalmente os alvos passados relativos ao cwd.
  */
-export function writeInternalEslintConfig(rootPath: string): string {
-  const path = join(rootPath, '.cliquet-internal.eslint.config.mjs')
+export function writeInternalEslintConfig(dir: string): string {
+  const path = join(dir, 'cliquet-internal.eslint.config.mjs')
   writeFileSync(path, `export default [{ rules: ${JSON.stringify(INTERNAL_ESLINT_RULES)} }]\n`)
   return path
 }
@@ -51,11 +54,13 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
       // 2) eslint com config interna, se resolvível
       const eslintBin = ctx.resolveTool('eslint')
       if (eslintBin !== null) {
-        const configPath = writeInternalEslintConfig(ctx.rootPath)
+        const configDir = mkdtempSync(join(tmpdir(), 'cliquet-eslint-'))
+        const configPath = writeInternalEslintConfig(configDir)
         try {
           // Paths relativos ao cwd (= ctx.rootPath): passar diretórios absolutos faz o
           // ESLint 9 tratar tudo como "outside of the base path" e ignorar o glob inteiro.
-          const relativeDirs = ctx.sourceDirs.map((dir) => relative(ctx.rootPath, dir))
+          // Fallback de sourceDirs pode ser a própria raiz → relative() vira '' → usa '.'.
+          const relativeDirs = ctx.sourceDirs.map((dir) => relative(ctx.rootPath, dir) || '.')
           const r = await run(
             eslintBin,
             ['--no-config-lookup', '--config', configPath, '--format', 'json', ...relativeDirs],
@@ -66,8 +71,10 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
           }
           const parsed = parseEslintJson(r.stdout)
           if (parsed === null) {
-            // eslint < 9 não conhece --no-config-lookup: degrada para só os built-ins
-            const unsupported = /no-config-lookup|unknown option|invalid option/i.test(r.stderr)
+            // eslint < 9 não conhece a flag ("Invalid option '--no-config-lookup'"):
+            // degrada para só os built-ins. Regex estreita — padrões genéricos como
+            // "invalid option" mascarariam erros reais de config no eslint 9.
+            const unsupported = /no-config-lookup/i.test(r.stderr)
             if (!unsupported) {
               return {
                 status: 'error',
@@ -82,7 +89,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
             locations.push(...parsed.locations)
           }
         } finally {
-          rmSync(configPath, { force: true })
+          rmSync(configDir, { recursive: true, force: true })
         }
       }
 
