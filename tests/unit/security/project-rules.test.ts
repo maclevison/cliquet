@@ -49,4 +49,20 @@ describe('checkPackageFreshness', () => {
     const fetcher = vi.fn().mockRejectedValue(new Error('ENOTFOUND'))
     expect(await checkPackageFreshness(root, fetcher, new Date())).toHaveLength(0)
   })
+
+  it('consulta todas as deps (paralelizado em lotes)', async () => {
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({
+        dependencies: { a: '^1.0.0', b: '^1.0.0', c: '^1.0.0' },
+        devDependencies: { d: '^1.0.0' },
+      }),
+    )
+    const now = new Date('2026-07-13T00:00:00Z')
+    const fetcher = vi.fn().mockResolvedValue({ time: { modified: '2026-07-12T00:00:00Z' } })
+    const findings = await checkPackageFreshness(root, fetcher, now)
+    expect(fetcher).toHaveBeenCalledTimes(4)
+    expect(fetcher.mock.calls.map((c) => c[0]).sort()).toEqual(['a', 'b', 'c', 'd'])
+    expect(findings).toHaveLength(4)
+  })
 })

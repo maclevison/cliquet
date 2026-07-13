@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { CONTENT_RULES } from '../../../src/security/content-rules.js'
+import { CONTENT_RULES, runContentRules } from '../../../src/security/content-rules.js'
 
 function run(rule: string, content: string, file = 'src/a.ts') {
-  const fn = CONTENT_RULES[rule]
-  if (!fn) throw new Error(`regra desconhecida: ${rule}`)
-  return fn(file, content)
+  if (!CONTENT_RULES[rule]) throw new Error(`regra desconhecida: ${rule}`)
+  return runContentRules(file, content, [rule])
 }
 
 describe('hardcoded_secrets', () => {

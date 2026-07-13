@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { relative } from 'node:path'
 import type { Action, Gate, GateResult, PackageManager, ProjectContext } from '../types.js'
 import { listSourceFiles } from '../source-files.js'
-import { CONTENT_RULES, type SecurityFinding } from '../security/content-rules.js'
+import { CONTENT_RULES, runContentRules, type SecurityFinding } from '../security/content-rules.js'
 import {
   checkGitignoreSensitive,
   checkPackageFreshness,
@@ -85,13 +85,13 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       const rules = baseline.security.rules
       const findings: SecurityFinding[] = []
 
-      // Regras de conteúdo habilitadas
-      const enabledContentRules = Object.entries(CONTENT_RULES).filter(([name]) => rules[name as keyof typeof rules])
+      // Regras de conteúdo habilitadas — split único por arquivo em runContentRules
+      const enabledContentRules = Object.keys(CONTENT_RULES).filter((name) => rules[name as keyof typeof rules])
       if (enabledContentRules.length > 0) {
         for (const file of listSourceFiles(ctx.sourceDirs)) {
           const content = readFileSync(file, 'utf8')
           const rel = relative(ctx.rootPath, file)
-          for (const [, rule] of enabledContentRules) findings.push(...rule(rel, content))
+          findings.push(...runContentRules(rel, content, enabledContentRules))
         }
       }
 
