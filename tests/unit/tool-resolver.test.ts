@@ -32,4 +32,15 @@ describe('createToolResolver', () => {
     const resolve = createToolResolver(dir)
     expect(resolve('cliquet-tool-inexistente-xyz')).toBeNull()
   })
+
+  it('finds a binary hoisted to the monorepo root .bin', () => {
+    const repo = join(mkdtempSync(join(tmpdir(), 'cliquet-resolver-mono-')), 'repo')
+    mkdirSync(join(repo, 'apps', 'web'), { recursive: true })
+    mkdirSync(join(repo, 'node_modules', '.bin'), { recursive: true })
+    const hoisted = join(repo, 'node_modules', '.bin', 'fake-hoisted')
+    writeFileSync(hoisted, '#!/bin/sh\n')
+    chmodSync(hoisted, 0o755)
+    const resolve = createToolResolver(join(repo, 'apps', 'web'), process.env, repo)
+    expect(resolve('fake-hoisted')).toBe(hoisted)
+  })
 })
