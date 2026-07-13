@@ -43,12 +43,44 @@ const COMPARISON_OPERATORS = [
 
 const LOGICAL = [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken]
 
+// Swapping `a && b` / `a || b` operands only preserves meaning when the result is consumed
+// as a boolean (a guard). In value position (`const x = f() || default`, `return f() || d`)
+// the swap changes the returned value, so the finding is a false positive. Walk up parents,
+// rebinding `node` at each level (the flagged node is the INNER logical, but the condition
+// slot holds the OUTERMOST one), transparent through parens and enclosing &&/||.
+function isInBooleanContext(node: ts.Expression): boolean {
+  let current: ts.Node = node
+  let parent = current.parent
+  while (parent) {
+    if (ts.isParenthesizedExpression(parent)) {
+      current = parent
+      parent = parent.parent
+      continue
+    }
+    if (ts.isBinaryExpression(parent) && LOGICAL.includes(parent.operatorToken.kind)) {
+      current = parent
+      parent = parent.parent
+      continue
+    }
+    if (ts.isPrefixUnaryExpression(parent)) {
+      return parent.operator === ts.SyntaxKind.ExclamationToken
+    }
+    if (ts.isIfStatement(parent) || ts.isWhileStatement(parent) || ts.isDoStatement(parent)) {
+      return parent.expression === current
+    }
+    if (ts.isForStatement(parent)) return parent.condition === current
+    if (ts.isConditionalExpression(parent)) return parent.condition === current
+    return false
+  }
+  return false
+}
+
 export function analyzeConditionOrder(filePath: string, content: string): ConditionOrderFinding[] {
   const source = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
   const findings: ConditionOrderFinding[] = []
   const visit = (node: ts.Node): void => {
     if (ts.isBinaryExpression(node) && LOGICAL.includes(node.operatorToken.kind)) {
-      if (isExpensive(node.left) && isCheap(node.right)) {
+      if (isExpensive(node.left) && isCheap(node.right) && isInBooleanContext(node)) {
         const { line } = source.getLineAndCharacterOfPosition(node.getStart())
         findings.push({
           file: filePath,
