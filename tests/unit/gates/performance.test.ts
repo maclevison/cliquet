@@ -97,7 +97,7 @@ describe('real eslint (smoke)', () => {
     writeFileSync(join(root, 'dist', 'bundle.js'), 'var x = 1\nexport default "a" + x\n')
     writeFileSync(join(root, 'ok.js'), 'export const ok = 1\n')
     const eslintBin = join(process.cwd(), 'node_modules', '.bin', 'eslint') // cliquet's own devDependency
-    const baseline = { ...DEFAULT_BASELINE, source_dirs: { paths: ['.'] } }
+    const baseline = { ...DEFAULT_BASELINE, source_dirs: { paths: ['.'], exclude: [] } }
     const ctx = {
       ...createProjectContext(root, baseline, 300_000),
       resolveTool: (bin: string) => (bin === 'eslint' ? eslintBin : null),

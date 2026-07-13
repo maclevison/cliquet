@@ -24,7 +24,7 @@ export interface SecurityRules {
 
 export interface Baseline {
   schema: string
-  source_dirs: { paths: string[] }
+  source_dirs: { paths: string[]; exclude: string[] }
   security: { advisories: number; rules: SecurityRules }
   style: { violations: number }
   static_analysis: { errors: number }
@@ -38,7 +38,7 @@ export interface Baseline {
 
 export const DEFAULT_BASELINE: Baseline = {
   schema: SCHEMA_VERSION,
-  source_dirs: { paths: ['src', 'app', 'lib'] },
+  source_dirs: { paths: ['src', 'app', 'lib'], exclude: [] },
   security: {
     advisories: 0,
     rules: {
@@ -139,15 +139,49 @@ function mergeSection(
   return out
 }
 
+/** Paths whose array elements get element-level string/pattern validation (source_dirs only — see spec). */
+const STRING_ARRAY_PATHS_WITH_ELEMENT_CHECKS = new Set(['source_dirs.paths', 'source_dirs.exclude'])
+
 function validateLeaf(path: string, defaultValue: unknown, value: unknown): void {
   if (Array.isArray(defaultValue)) {
     if (!Array.isArray(value)) {
       throw new ConfigError(`Invalid baseline: "${path}" must be an array`)
     }
+    if (STRING_ARRAY_PATHS_WITH_ELEMENT_CHECKS.has(path)) {
+      validateStringArrayElements(path, value)
+    }
     return
   }
   if (typeof value !== typeof defaultValue || Array.isArray(value) || isPlainObject(value)) {
     throw new ConfigError(`Invalid baseline: "${path}" must be a ${typeof defaultValue}`)
+  }
+}
+
+/** Element-level checks for source_dirs.paths / source_dirs.exclude (spec: "Pattern semantics").
+ *  exclude entries are picomatch globs consumed downstream by jscpd's comma-split --ignore flag,
+ *  so "," would be silently garbled there; braces are pure sugar (list patterns separately);
+ *  leading "!" (negation) has surprising picomatch-array semantics and is unsupported. */
+function validateStringArrayElements(path: string, value: unknown[]): void {
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      throw new ConfigError(`Invalid baseline: "${path}" entries must be strings, got ${JSON.stringify(entry)}`)
+    }
+    if (path !== 'source_dirs.exclude') continue
+    if (entry.includes(',')) {
+      throw new ConfigError(
+        `Invalid baseline: "${path}" entry "${entry}" must not contain "," (jscpd's --ignore is comma-split; it would be silently garbled)`,
+      )
+    }
+    if (entry.includes('{') || entry.includes('}')) {
+      throw new ConfigError(
+        `Invalid baseline: "${path}" entry "${entry}" must not contain "{" or "}" (brace expansion is unsupported; list the patterns separately)`,
+      )
+    }
+    if (entry.startsWith('!')) {
+      throw new ConfigError(
+        `Invalid baseline: "${path}" entry "${entry}" must not start with "!" (negation is unsupported)`,
+      )
+    }
   }
 }
 

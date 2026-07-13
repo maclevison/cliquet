@@ -34,6 +34,41 @@ describe('DEFAULT_BASELINE', () => {
     expect(Object.keys(DEFAULT_BASELINE.security.rules)).toHaveLength(12)
     expect(DEFAULT_BASELINE.security.advisories).toBe(0)
   })
+
+  it('defaults source_dirs.exclude to []', () => {
+    expect(DEFAULT_BASELINE.source_dirs).toEqual({ paths: ['src', 'app', 'lib'], exclude: [] })
+  })
+})
+
+describe('source_dirs.exclude validation', () => {
+  it('accepts a valid exclude list', () => {
+    writeFileSync(
+      join(dir, BASELINE_FILENAME),
+      JSON.stringify({ schema: 'cliquet/v1', source_dirs: { exclude: ['app/api/gen'] } }),
+    )
+    expect(loadBaseline(dir).source_dirs.exclude).toEqual(['app/api/gen'])
+  })
+
+  it.each([
+    ['non-string entry', ['gen', 42]],
+    ['comma pattern', ['a,b']],
+    ['brace pattern', ['**/*.{gen,mock}.ts']],
+    ['negation pattern', ['!keep']],
+  ])('rejects %s with ConfigError', (_name, exclude) => {
+    writeFileSync(
+      join(dir, BASELINE_FILENAME),
+      JSON.stringify({ schema: 'cliquet/v1', source_dirs: { exclude } }),
+    )
+    expect(() => loadBaseline(dir)).toThrow(ConfigError)
+  })
+
+  it('rejects a non-string source_dirs.paths entry (same element-level check)', () => {
+    writeFileSync(
+      join(dir, BASELINE_FILENAME),
+      JSON.stringify({ schema: 'cliquet/v1', source_dirs: { paths: ['src', 7] } }),
+    )
+    expect(() => loadBaseline(dir)).toThrow(ConfigError)
+  })
 })
 
 describe('saveBaseline / loadBaseline', () => {
