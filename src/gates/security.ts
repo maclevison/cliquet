@@ -96,8 +96,9 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       }
 
       // Project rules
-      if (rules.gitignore_sensitive) findings.push(...checkGitignoreSensitive(ctx.rootPath))
-      if (rules.package_freshness) findings.push(...(await checkPackageFreshness(ctx.rootPath, freshnessFetcher)))
+      if (rules.gitignore_sensitive) findings.push(...checkGitignoreSensitive(ctx.rootPath, ctx.repoRoot))
+      if (rules.package_freshness)
+        findings.push(...(await checkPackageFreshness(ctx.rootPath, freshnessFetcher, undefined, ctx.repoRoot)))
 
       // Package manager audit
       const auditRaw = await runAudit(ctx)

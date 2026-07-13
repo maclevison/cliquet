@@ -1,13 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SecurityFinding } from './content-rules.js'
+import { dirChain } from '../workspace.js'
 
 const REQUIRED_IGNORES = ['.env', '*.pem', '*.key']
 
-export function checkGitignoreSensitive(rootPath: string): SecurityFinding[] {
-  const path = join(rootPath, '.gitignore')
-  const content = existsSync(path) ? readFileSync(path, 'utf8') : ''
-  const entries = new Set(content.split('\n').map((l) => l.trim()))
+export function checkGitignoreSensitive(rootPath: string, stopDir: string | null = null): SecurityFinding[] {
+  // Union over every .gitignore up to the repo root — git semantics: a root
+  // entry covers all subdirectories, so a workspace must not be flagged for it.
+  const entries = new Set<string>()
+  for (const dir of dirChain(rootPath, stopDir)) {
+    const path = join(dir, '.gitignore')
+    if (!existsSync(path)) continue
+    for (const line of readFileSync(path, 'utf8').split('\n')) entries.add(line.trim())
+  }
   return REQUIRED_IGNORES.filter((e) => !entries.has(e)).map((entry) => ({
     rule: 'gitignore_sensitive',
     file: '.gitignore',
@@ -30,22 +36,26 @@ const FRESHNESS_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
 /** Concurrency cap: prevents N deps × 5s timeout from eating the gate's budget serially. */
 const FRESHNESS_CONCURRENCY = 8
 
-/** Version actually installed (node_modules/<dep>/package.json); null = not installed. */
-function installedVersion(rootPath: string, dep: string): string | null {
-  const path = join(rootPath, 'node_modules', dep, 'package.json')
-  if (!existsSync(path)) return null
-  try {
-    const pkg = JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown }
-    return typeof pkg.version === 'string' ? pkg.version : null
-  } catch {
-    return null
+/** Version actually installed (node_modules/<dep>/package.json, walking up for hoisted installs); null = not installed. */
+function installedVersion(rootPath: string, dep: string, stopDir: string | null = null): string | null {
+  for (const dir of dirChain(rootPath, stopDir)) {
+    const path = join(dir, 'node_modules', dep, 'package.json')
+    if (!existsSync(path)) continue
+    try {
+      const pkg = JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown }
+      return typeof pkg.version === 'string' ? pkg.version : null
+    } catch {
+      return null
+    }
   }
+  return null
 }
 
 export async function checkPackageFreshness(
   rootPath: string,
   fetcher: RegistryFetcher = defaultRegistryFetcher,
   now: Date = new Date(),
+  stopDir: string | null = null,
 ): Promise<SecurityFinding[]> {
   const pkgPath = join(rootPath, 'package.json')
   if (!existsSync(pkgPath)) return []
@@ -64,7 +74,7 @@ export async function checkPackageFreshness(
   // would flag deps whose resolved version is years old. Not installed →
   // version unknown → silent skip, without wasting a registry call.
   const installed = deps
-    .map((dep) => ({ dep, version: installedVersion(rootPath, dep) }))
+    .map((dep) => ({ dep, version: installedVersion(rootPath, dep, stopDir) }))
     .filter((d): d is { dep: string; version: string } => d.version !== null)
   const findings: SecurityFinding[] = []
   for (let i = 0; i < installed.length; i += FRESHNESS_CONCURRENCY) {

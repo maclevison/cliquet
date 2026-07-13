@@ -113,3 +113,44 @@ describe('checkPackageFreshness', () => {
     expect(findings).toHaveLength(4)
   })
 })
+
+function mkMonorepo() {
+  const repo = join(mkdtempSync(join(tmpdir(), 'cliquet-mono-')), 'repo')
+  mkdirSync(join(repo, 'apps', 'web'), { recursive: true })
+  mkdirSync(join(repo, '.git'))
+  return { repo, web: join(repo, 'apps', 'web') }
+}
+
+describe('checkGitignoreSensitive walk-up', () => {
+  it('an entry present only in the ROOT .gitignore satisfies the rule', () => {
+    const { repo, web } = mkMonorepo()
+    writeFileSync(join(repo, '.gitignore'), '.env\n*.pem\n*.key\n')
+    expect(checkGitignoreSensitive(web, repo)).toHaveLength(0)
+  })
+
+  it('levels merge (union)', () => {
+    const { repo, web } = mkMonorepo()
+    writeFileSync(join(repo, '.gitignore'), '.env\n')
+    writeFileSync(join(web, '.gitignore'), '*.pem\n*.key\n')
+    expect(checkGitignoreSensitive(web, repo)).toHaveLength(0)
+  })
+
+  it('entry in neither level still reports', () => {
+    const { repo, web } = mkMonorepo()
+    writeFileSync(join(repo, '.gitignore'), '.env\n*.pem\n')
+    expect(checkGitignoreSensitive(web, repo).map((f) => f.message).join(' ')).toContain('*.key')
+  })
+})
+
+describe('checkPackageFreshness hoisted node_modules', () => {
+  it('resolves the installed version from the ROOT node_modules (npm/yarn hoisting)', async () => {
+    const { repo, web } = mkMonorepo()
+    writeFileSync(join(web, 'package.json'), JSON.stringify({ dependencies: { 'left-pad': '^1.0.0' } }))
+    mkdirSync(join(repo, 'node_modules', 'left-pad'), { recursive: true })
+    writeFileSync(join(repo, 'node_modules', 'left-pad', 'package.json'), JSON.stringify({ version: '1.3.0' }))
+    const fetcher = vi.fn().mockResolvedValue({ time: { '1.3.0': '2026-07-12T00:00:00Z' } })
+    const findings = await checkPackageFreshness(web, fetcher, new Date('2026-07-13T00:00:00Z'), repo)
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.message).toContain('left-pad@1.3.0')
+  })
+})
