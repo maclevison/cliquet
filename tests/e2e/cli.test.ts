@@ -116,6 +116,21 @@ describe('cliquet init', () => {
     expect(code).toBe(2)
     expect(errOut.join('')).toContain('--force')
   })
+
+  it('--force preserves the existing source_dirs/config and re-measures floors under it (README workflow)', async () => {
+    // The codegen fixture ships an edited scope: paths [src, gen], exclude [gen], package_freshness off.
+    // README: "set your paths/exclude first, then init --force". --force must MEASURE, not wipe that config.
+    const dir = copyFixture('codegen')
+    const code = await run(['init', '--force', '--path', dir])
+    expect(code).toBe(0)
+    const baseline = JSON.parse(readFileSync(join(dir, 'cliquet.baseline.json'), 'utf8'))
+    // the user's scope survives (the bug reset it to the default src/app/lib + exclude [])
+    expect(baseline.source_dirs.exclude).toEqual(['gen'])
+    expect(baseline.source_dirs.paths).toEqual(['src', 'gen'])
+    expect(baseline.security.rules.package_freshness).toBe(false)
+    // floors were measured WITH the exclude, so gen/ never inflates them (no gen offender grandfathered)
+    expect(Object.keys(baseline.file_size.allow ?? {}).some((k) => k.includes('gen/'))).toBe(false)
+  })
 })
 
 describe('cliquet check', () => {

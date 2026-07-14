@@ -33,9 +33,17 @@ const COUNT_GATES: Array<{ name: string; read: (c: Record<string, unknown>) => n
  * - security advisories absent (audit skipped, no lockfile) → keep default, NOT an error.
  * - coverage unmeasurable (error/skip) → floor 0 + note (base 0 always passes, so legacy adopts).
  * - security content FINDINGS are never snapshotted (fix / disable / suppress).
+ *
+ * `base` is the baseline the measurement lands ON: defaults for a fresh `init`, or the EXISTING file
+ * for `init --force` (README: "set your paths/exclude first, then init --force"), so user config
+ * (source_dirs, disabled rules, suppress, thresholds) survives while only the floors are re-measured.
+ * The allow maps are reset first, so a re-measure is a fresh snapshot — stale grandfathered entries
+ * (a file that shrank, or one now excluded) don't linger and loosen the ratchet.
  */
-export function applyMeasuredBaseline(result: CheckResult): MeasuredBaseline {
-  const baseline = structuredClone(DEFAULT_BASELINE)
+export function applyMeasuredBaseline(result: CheckResult, base: Baseline = DEFAULT_BASELINE): MeasuredBaseline {
+  const baseline = structuredClone(base)
+  baseline.file_size.allow = {}
+  baseline.complexity.allow = {}
   const notes: string[] = []
   const errored: string[] = []
   const gate = (name: string): GateReport | undefined => result.gates.find((g) => g.name === name)

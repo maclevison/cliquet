@@ -94,7 +94,7 @@ A few things are deliberately not auto-baselined:
 - **Advisories** are recorded as a floor, but they come from the live registry: a newly-disclosed CVE against an unchanged lockfile can raise the count with no code change. Re-baseline (`init --force`) when that happens — or, if you don't want advisories gating CI at all, set `security.advisory_ratchet: false` (that drops only the advisory ratchet; content rules, gitignore and freshness checks still run).
 - **Security findings** are zero-tolerance and never snapshotted: fix the code, disable the rule under `security.rules`, or suppress a false positive narrowly with [`security.suppress`](#suppressing-security-false-positives).
 
-Editing `source_dirs` after `init` invalidates the measured floors — set your `paths`/`exclude` first, then `init --force`.
+Editing `source_dirs` after `init` invalidates the measured floors — set your `paths`/`exclude` first, then `init --force`. `--force` **re-measures the floors under your edited scope and keeps the rest of your config** (disabled rules, `security.suppress`, thresholds); only the ratchet numbers (counts, `allow` maps, bundle, coverage) are recomputed. (An unreadable existing baseline is regenerated from defaults instead.)
 
 ### Scoping with `source_dirs`
 

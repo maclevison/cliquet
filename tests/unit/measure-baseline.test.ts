@@ -108,4 +108,34 @@ describe('applyMeasuredBaseline', () => {
     )
     expect(baseline.bundle_size.max_total_gzip_kb).toBe(DEFAULT_BASELINE.bundle_size.max_total_gzip_kb)
   })
+
+  it('clones the provided base, preserving its config (source_dirs, disabled rules, suppress)', () => {
+    const base = structuredClone(DEFAULT_BASELINE)
+    base.source_dirs = { paths: ['app', 'server'], exclude: ['app/api/gen'] }
+    base.security.rules.package_freshness = false
+    base.security.suppress = { 'test/**': ['eval_usage'] }
+    const { baseline } = applyMeasuredBaseline(
+      result([{ name: 'style', status: 'fail', current: { violations: 12 } }]),
+      base,
+    )
+    expect(baseline.source_dirs).toEqual({ paths: ['app', 'server'], exclude: ['app/api/gen'] })
+    expect(baseline.security.rules.package_freshness).toBe(false)
+    expect(baseline.security.suppress).toEqual({ 'test/**': ['eval_usage'] })
+    expect(baseline.style.violations).toBe(12) // floor still re-measured on top of the base
+  })
+
+  it('re-measures the allow maps fresh from the base (stale grandfathered entries are dropped)', () => {
+    const base = structuredClone(DEFAULT_BASELINE)
+    base.file_size.allow = { 'old/shrunk.ts': 1500 } // no longer an offender in the fresh run
+    base.complexity.allow = { 'old/a.ts gone': 61 }
+    const { baseline } = applyMeasuredBaseline(
+      result([
+        { name: 'file_size', status: 'fail', current: { offenders: [{ file: 'src/big.ts', lines: 1200 }] } },
+        { name: 'complexity', status: 'fail', current: { over_block: [{ id: 'src/a.ts f', ccn: 55 }] } },
+      ]),
+      base,
+    )
+    expect(baseline.file_size.allow).toEqual({ 'src/big.ts': 1200 })
+    expect(baseline.complexity.allow).toEqual({ 'src/a.ts f': 55 })
+  })
 })

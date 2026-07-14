@@ -97,9 +97,21 @@ function measuredBaseline(rootPath: string): Baseline {
  *  direct-measured (the gate skips at the default 0). Returns notes (coverage floored to 0) and a list
  *  of gates that ERRORED — a partial baseline the caller must surface loudly and exit non-zero on. */
 async function measureBaselineByGates(rootPath: string, timeoutMs: number): Promise<MeasuredBaseline> {
-  const ctx = createProjectContext(rootPath, DEFAULT_BASELINE, timeoutMs)
-  const result = await runCheck(ctx, DEFAULT_BASELINE)
-  const measured = applyMeasuredBaseline(result)
+  // On `init --force` over an existing baseline, carry its config forward as the base: the measured
+  // floors then honor the user's source_dirs/exclude (README: "set paths/exclude first, then --force")
+  // and their other settings (disabled rules, suppress, thresholds) survive — only the floors re-measure.
+  // A corrupt/unreadable existing file falls back to defaults, so --force stays the regenerate escape hatch.
+  let base = DEFAULT_BASELINE
+  if (baselineExists(rootPath)) {
+    try {
+      base = loadBaseline(rootPath)
+    } catch {
+      // invalid existing baseline — regenerate from defaults rather than refusing
+    }
+  }
+  const ctx = createProjectContext(rootPath, base, timeoutMs)
+  const result = await runCheck(ctx, base)
+  const measured = applyMeasuredBaseline(result, base)
   measureBundleInto(measured.baseline, rootPath)
   return measured
 }
