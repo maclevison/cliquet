@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { relative } from 'node:path'
+import picomatch from 'picomatch'
 import type { Action, Gate, GateResult, PackageManager, ProjectContext } from '../types.js'
+import { expandExcludePatterns, toPosix } from '../context.js'
 import { listSourceFiles } from '../source-files.js'
 import { CONTENT_RULES, runContentRules, type SecurityFinding } from '../security/content-rules.js'
 import {
@@ -101,6 +103,21 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       if (rules.package_freshness)
         findings.push(...(await checkPackageFreshness(ctx.rootPath, freshnessFetcher, undefined, ctx.repoRoot)))
 
+      // Drop findings matched by security.suppress (glob → content-rule names). Per-entry picomatch,
+      // bare paths expand like source_dirs.exclude. suppress values are validated to be content-rule
+      // names, so project findings (gitignore/freshness) can never match. Suppression removes a false
+      // positive (it does NOT become a grandfathered ratchet number) and is surfaced as a visible warn.
+      const suppressors = Object.entries(baseline.security.suppress).map(([glob, ruleNames]) => ({
+        isMatch: picomatch(expandExcludePatterns([glob]), { dot: true }),
+        ruleNames: new Set(ruleNames),
+      }))
+      const kept: SecurityFinding[] = []
+      const suppressed: SecurityFinding[] = []
+      for (const f of findings) {
+        const hit = suppressors.some((s) => s.ruleNames.has(f.rule) && s.isMatch(toPosix(f.file)))
+        ;(hit ? suppressed : kept).push(f)
+      }
+
       // Package manager audit
       const auditRaw = await runAudit(ctx)
       const audit = auditRaw === null ? null : parseAudit(ctx.packageManager, auditRaw)
@@ -118,14 +135,24 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       const advisoriesFail = audit !== null && criticalHigh > baseline.security.advisories
 
       const actions: Action[] = []
-      if (findings.length > 0) {
+      if (kept.length > 0) {
         actions.push({
           gate: 'security',
           type: 'FIX SEC',
           severity: 'block',
           priority: 0,
-          message: `Fix ${findings.length} security finding(s)`,
-          files: findings.map((f) => `${f.file}:${f.line} [${f.rule}] ${f.message}`),
+          message: `Fix ${kept.length} security finding(s)`,
+          files: kept.map((f) => `${f.file}:${f.line} [${f.rule}] ${f.message}`),
+        })
+      }
+      if (suppressed.length > 0) {
+        actions.push({
+          gate: 'security',
+          type: 'SUPPRESSED',
+          severity: 'warn',
+          priority: 10,
+          message: `Suppressed ${suppressed.length} security finding(s) via security.suppress`,
+          files: suppressed.map((f) => `${f.file}:${f.line} [${f.rule}] ${f.message}`),
         })
       }
       if (advisoriesFail) {
@@ -139,7 +166,7 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
         })
       }
 
-      const failed = findings.length > 0 || advisoriesFail
+      const failed = kept.length > 0 || advisoriesFail
       // A root lockfile means the advisories cover the WHOLE monorepo, not just this workspace
       const workspaceWide =
         ctx.lockfileDir !== null && ctx.lockfileDir !== ctx.rootPath ? ' (workspace-wide audit)' : ''
@@ -149,11 +176,11 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       // reporting 0 as if it were a clean measurement.
       const current =
         audit === null
-          ? { findings: findings.length }
-          : { advisories: criticalHigh, findings: findings.length }
+          ? { findings: kept.length }
+          : { advisories: criticalHigh, findings: kept.length }
       return {
         status: failed ? 'fail' : 'pass',
-        message: `${auditNote}, ${findings.length} findings`,
+        message: `${auditNote}, ${kept.length} findings`,
         baseline: { advisories: baseline.security.advisories },
         current,
         actions,

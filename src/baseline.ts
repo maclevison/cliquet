@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { CONTENT_RULES } from './security/content-rules.js'
 
 export const BASELINE_FILENAME = 'cliquet.baseline.json'
 export const SCHEMA_VERSION = 'cliquet/v1'
@@ -25,7 +26,9 @@ export interface SecurityRules {
 export interface Baseline {
   schema: string
   source_dirs: { paths: string[]; exclude: string[] }
-  security: { advisories: number; rules: SecurityRules }
+  // `suppress`: glob → content-rule names whose findings under that path are dropped (visible warn,
+  // never affects exit). An OPEN map — see OPEN_MAP_PATHS and the mergeSection passthrough.
+  security: { advisories: number; rules: SecurityRules; suppress: Record<string, string[]> }
   style: { violations: number }
   static_analysis: { errors: number }
   coverage: { percentage: number }
@@ -55,6 +58,7 @@ export const DEFAULT_BASELINE: Baseline = {
       gitignore_sensitive: true,
       package_freshness: true,
     },
+    suppress: {},
   },
   style: { violations: 0 },
   static_analysis: { errors: 0 },
@@ -115,6 +119,15 @@ function mergeWithDefaults(raw: Record<string, unknown>): Baseline {
   return out as unknown as Baseline
 }
 
+/** Content-rule names are the only valid `security.suppress` values (project rules — gitignore/
+ *  freshness — are repo-level, toggled via security.rules, not suppressible per-file). */
+const CONTENT_RULE_NAMES = new Set(Object.keys(CONTENT_RULES))
+
+/** Sections that hold an OPEN map (arbitrary user keys) rather than a fixed default shape.
+ *  mergeSection's default-key whitelist would erase these on load, so they get a validated
+ *  passthrough instead. Extensible (e.g. a future `file_size.allow`). */
+const OPEN_MAP_PATHS = new Set(['security.suppress'])
+
 /** Merges a single section, validating each key against the default (recursive for security.rules). */
 function mergeSection(
   path: string,
@@ -125,6 +138,12 @@ function mergeSection(
   for (const key of Object.keys(defaults)) {
     const value = raw[key]
     if (value === undefined) continue
+    // Open map: pass the user's entries through (validated), never key-filter against the
+    // empty default — that would silently drop every entry.
+    if (OPEN_MAP_PATHS.has(`${path}.${key}`)) {
+      out[key] = validateSuppressMap(`${path}.${key}`, value)
+      continue
+    }
     const defaultValue = defaults[key]
     if (isPlainObject(defaultValue)) {
       if (!isPlainObject(value)) {
@@ -185,6 +204,40 @@ function validateStringArrayElements(path: string, value: unknown[]): void {
       )
     }
   }
+}
+
+/** Validates `security.suppress`: an open glob → content-rule-names map. Glob keys take the same
+ *  picomatch-array constraints as source_dirs.exclude MINUS the jscpd comma reason (suppress is
+ *  never passed to jscpd); brace/negation still break picomatch arrays. Values must be arrays of
+ *  KNOWN content-rule names — an unknown/typo'd name is a ConfigError (it would silently protect
+ *  nothing). */
+function validateSuppressMap(path: string, value: unknown): Record<string, string[]> {
+  if (!isPlainObject(value)) {
+    throw new ConfigError(`Invalid baseline: "${path}" must be an object (glob → content-rule names)`)
+  }
+  const out: Record<string, string[]> = {}
+  for (const [glob, rules] of Object.entries(value)) {
+    if (glob.includes('{') || glob.includes('}')) {
+      throw new ConfigError(
+        `Invalid baseline: "${path}" glob "${glob}" must not contain "{" or "}" (brace expansion is unsupported; list the patterns separately)`,
+      )
+    }
+    if (glob.startsWith('!')) {
+      throw new ConfigError(`Invalid baseline: "${path}" glob "${glob}" must not start with "!" (negation is unsupported)`)
+    }
+    if (!Array.isArray(rules)) {
+      throw new ConfigError(`Invalid baseline: "${path}"."${glob}" must be an array of content-rule names`)
+    }
+    for (const rule of rules) {
+      if (typeof rule !== 'string' || !CONTENT_RULE_NAMES.has(rule)) {
+        throw new ConfigError(
+          `Invalid baseline: "${path}"."${glob}" has an unknown content rule ${JSON.stringify(rule)} (valid: ${[...CONTENT_RULE_NAMES].join(', ')})`,
+        )
+      }
+    }
+    out[glob] = rules as string[]
+  }
+  return out
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

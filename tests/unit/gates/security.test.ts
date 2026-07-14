@@ -87,6 +87,44 @@ describe('securityGate', () => {
     expect(r.status).toBe('pass')
   })
 
+  describe('security.suppress', () => {
+    async function runWithSuppress(suppress: Record<string, string[]>, src: string) {
+      writeFileSync(join(root, 'src', 'bad.ts'), src)
+      const baseline = baselineNoFreshness()
+      baseline.security.suppress = suppress
+      return gateWith(fixture('npm-audit-clean.json')).run(createProjectContext(root, baseline, 300_000), baseline)
+    }
+
+    it('suppresses a matching glob + rule and reports it as a visible warn (passes)', async () => {
+      const r = await runWithSuppress({ 'src/bad.ts': ['eval_usage'] }, 'eval(input)')
+      expect(r.status).toBe('pass')
+      const warn = r.actions.find((a) => a.severity === 'warn')
+      expect(warn?.message).toMatch(/suppress/i)
+      expect(warn?.files.some((f) => f.includes('bad.ts') && f.includes('eval_usage'))).toBe(true)
+    })
+
+    it('suppresses only the named rule — a different rule on the same file still fails (block)', async () => {
+      const r = await runWithSuppress(
+        { 'src/bad.ts': ['eval_usage'] },
+        'eval(input)\nconst q = db.query(`SELECT * FROM t WHERE id=${id}`)',
+      )
+      expect(r.status).toBe('fail')
+      const block = r.actions.find((a) => a.severity === 'block')
+      expect(block?.files.some((f) => f.includes('sql_injection'))).toBe(true)
+      expect(block?.files.some((f) => f.includes('eval_usage'))).toBe(false)
+    })
+
+    it('does not suppress when the glob does not match the file', async () => {
+      const r = await runWithSuppress({ 'src/other.ts': ['eval_usage'] }, 'eval(input)')
+      expect(r.status).toBe('fail')
+    })
+
+    it('a bare-path glob suppresses the whole subtree', async () => {
+      const r = await runWithSuppress({ src: ['eval_usage'] }, 'eval(input)')
+      expect(r.status).toBe('pass')
+    })
+  })
+
   it('fails when critical/high advisories exceed the baseline', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()

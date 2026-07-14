@@ -84,6 +84,47 @@ describe('source_dirs.exclude validation', () => {
   })
 })
 
+describe('security.suppress validation (open-map passthrough)', () => {
+  function writeSuppress(suppress: unknown) {
+    writeFileSync(
+      join(dir, BASELINE_FILENAME),
+      JSON.stringify({ schema: 'cliquet/v1', security: { suppress } }),
+    )
+  }
+
+  it('defaults suppress to {}', () => {
+    expect(DEFAULT_BASELINE.security.suppress).toEqual({})
+  })
+
+  it('PRESERVES entries through load (mergeSection must not key-filter the open map)', () => {
+    writeSuppress({ '**/*.test.ts': ['hardcoded_secrets'], 'src/zod-config.ts': ['eval_usage'] })
+    expect(loadBaseline(dir).security.suppress).toEqual({
+      '**/*.test.ts': ['hardcoded_secrets'],
+      'src/zod-config.ts': ['eval_usage'],
+    })
+  })
+
+  it('keeps the other security keys when suppress is present', () => {
+    writeSuppress({ 'src/a.ts': ['eval_usage'] })
+    const b = loadBaseline(dir)
+    expect(b.security.advisories).toBe(0)
+    expect(Object.keys(b.security.rules)).toHaveLength(12)
+  })
+
+  it.each([
+    ['unknown rule', { 'src/a.ts': ['not_a_rule'] }, /not_a_rule/],
+    ['project rule (content-only)', { '.gitignore': ['gitignore_sensitive'] }, /gitignore_sensitive/],
+    ['brace glob key', { '**/*.{a,b}.ts': ['eval_usage'] }, /must not contain "\{"/],
+    ['negation glob key', { '!keep.ts': ['eval_usage'] }, /must not start with "!"/],
+    ['non-array value', { 'src/a.ts': 'eval_usage' }, /must be an array/],
+    ['non-object suppress', ['eval_usage'], /must be an object/],
+  ] as const)('rejects %s with ConfigError', (_name, suppress, messageFragment) => {
+    writeSuppress(suppress)
+    expect(() => loadBaseline(dir)).toThrow(ConfigError)
+    expect(() => loadBaseline(dir)).toThrow(messageFragment)
+  })
+})
+
 describe('saveBaseline / loadBaseline', () => {
   it('round-trip preserves the content', () => {
     saveBaseline(dir, DEFAULT_BASELINE)
