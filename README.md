@@ -159,7 +159,7 @@ AI agents write more of your code every day — Cliquet makes sure they can't lo
 cliquet check                    # human-readable (default)
 cliquet check --plain            # no ANSI colors
 cliquet check --format json      # structured output for CI and AI agents
-cliquet check --format github    # ::error::/::warning:: annotations
+cliquet check --format github    # inline PR annotations (::error file=…,line=…::)
 ```
 
 ### Exit codes
@@ -197,6 +197,8 @@ jobs:
       - run: npm run build --if-present   # so the bundle gate can measure
       - run: npx cliquet check --format github --plain
 ```
+
+`--format github` emits GitHub Actions workflow commands, so each finding shows up as an **inline annotation on the PR diff** at its file and line (capped per run; the rest stay in the log). Run cliquet at the repo root so annotation paths resolve; from a monorepo subdir, cliquet prefixes them with the path from the repo root automatically.
 
 ## CLI reference
 
