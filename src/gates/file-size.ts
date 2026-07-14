@@ -50,6 +50,7 @@ export const fileSizeGate: Gate = {
           priority: 5,
           message: `Split ${offenders.length} file(s) over ${maxLines} lines`,
           files: offenders.map((o) => `${o.file} (${o.lines}L)`),
+          locations: offenders.map((o) => ({ file: o.file, message: `${o.lines} lines (limit ${maxLines})` })),
         },
       ],
     }

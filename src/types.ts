@@ -4,6 +4,14 @@ export type GateStatus = 'pass' | 'fail' | 'skip' | 'error'
 export type ActionSeverity = 'block' | 'warn'
 export type PackageManager = 'npm' | 'pnpm' | 'yarn'
 
+/** Structured location for a finding, used by the github formatter to emit inline PR annotations.
+ *  Additive/internal — NOT part of the frozen cliquet/v1 JSON (formatJson strips it). */
+export interface ActionLocation {
+  file: string
+  line?: number
+  message?: string
+}
+
 export interface Action {
   gate: string
   type: string
@@ -11,6 +19,8 @@ export interface Action {
   priority: number
   message: string
   files: string[]
+  /** Optional per-finding {file,line,message} for github annotations; absent → summary annotation. */
+  locations?: ActionLocation[]
 }
 
 export interface GateResult {

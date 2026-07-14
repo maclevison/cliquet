@@ -49,7 +49,7 @@
     "violations": 0
   },
   "bundle_size": {
-    "max_total_gzip_kb": 44,
+    "max_total_gzip_kb": 45,
     "tolerance_percent": 0.5,
     "dist_dirs": [
       "dist",

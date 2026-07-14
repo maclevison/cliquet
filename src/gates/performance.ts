@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
-import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
+import type { Action, ActionLocation, Gate, GateResult, ProjectContext } from '../types.js'
 import { listSourceFiles } from '../source-files.js'
 import { runCommand, tailLines } from '../process.js'
 import { eslintIgnoreArgs, parseEslintJson } from './static-analysis.js'
@@ -49,6 +49,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
       const base = { violations: baseline.performance.violations }
       let violations = 0
       const locations: string[] = []
+      const items: ActionLocation[] = []
 
       // 1) built-in: condition order (independent of eslint — spec §5 gate 8)
       for (const file of listSourceFiles(ctx.sourceDirs, ctx.isExcluded)) {
@@ -56,6 +57,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
         for (const f of analyzeConditionOrder(rel, readFileSync(file, 'utf8'))) {
           violations++
           locations.push(`${f.file}:${f.line} ${f.message}`)
+          items.push({ file: f.file, line: f.line, message: f.message })
         }
       }
 
@@ -106,6 +108,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
           } else {
             violations += parsed.errors
             locations.push(...parsed.locations)
+            items.push(...parsed.items)
           }
         } finally {
           rmSync(configDir, { recursive: true, force: true })
@@ -134,6 +137,7 @@ export function createPerformanceGate(deps: ToolRunnerDeps = {}): Gate {
           priority: 6,
           message: `Fix ${violations} performance violation(s) — \`cliquet fix\` resolves the ESLint ones`,
           files: locations,
+          locations: items,
         },
       ]
       return { status: 'fail', message: `${violations} violations (baseline: ${base.violations})`, baseline: base, current, actions }

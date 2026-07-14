@@ -145,6 +145,7 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
           priority: 0,
           message: `Fix ${kept.length} security finding(s)`,
           files: kept.map((f) => `${f.file}:${f.line} [${f.rule}] ${f.message}`),
+          locations: kept.map((f) => ({ file: f.file, line: f.line, message: `[${f.rule}] ${f.message}` })),
         })
       }
       if (suppressed.length > 0) {

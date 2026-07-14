@@ -1,5 +1,5 @@
 import { isAbsolute, relative } from 'node:path'
-import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
+import type { Action, ActionLocation, Gate, GateResult, ProjectContext } from '../types.js'
 import { hasBiomeConfig, hasEslintConfig, hasTsconfig } from '../detect.js'
 import { runCommand, tailLines } from '../process.js'
 import { suggestBaselineUpdate } from './improvement.js'
@@ -8,6 +8,8 @@ import { parseBiomeDiagnostics, type ToolRunnerDeps } from './style.js'
 export interface AnalysisCounts {
   errors: number
   locations: string[]
+  /** Structured form of `locations` for github annotations (file/line/message). */
+  items: ActionLocation[]
 }
 
 export function parseEslintJson(stdout: string, rootPath?: string): AnalysisCounts | null {
@@ -15,31 +17,33 @@ export function parseEslintJson(stdout: string, rootPath?: string): AnalysisCoun
     const parsed = JSON.parse(stdout) as Array<{
       filePath: string
       errorCount: number
-      messages: Array<{ severity: number; line: number }>
+      messages: Array<{ severity: number; line: number; ruleId?: string | null; message?: string }>
     }>
     if (!Array.isArray(parsed)) return null
     const errors = parsed.reduce((sum, f) => sum + f.errorCount, 0)
-    const locations = parsed.flatMap((f) => {
+    const items = parsed.flatMap((f) => {
       // ESLint reports ABSOLUTE filePaths; every other gate reports relative to
       // the project root — normalize here so reports don't mix the two styles.
       const file = rootPath !== undefined && isAbsolute(f.filePath) ? relative(rootPath, f.filePath) : f.filePath
-      return f.messages.filter((m) => m.severity === 2).map((m) => `${file}:${m.line}`)
+      return f.messages
+        .filter((m) => m.severity === 2)
+        .map((m): ActionLocation => ({ file, line: m.line, message: m.ruleId ? `${m.ruleId}: ${m.message ?? ''}` : m.message }))
     })
-    return { errors, locations }
+    return { errors, locations: items.map((i) => `${i.file}:${i.line}`), items }
   } catch {
     return null
   }
 }
 
-const TSC_ERROR_PATTERN = /^(.+)\((\d+),\d+\): error TS\d+/
+const TSC_ERROR_PATTERN = /^(.+)\((\d+),\d+\): error TS\d+: ?(.*)/
 
 export function parseTscOutput(output: string): AnalysisCounts {
-  const locations: string[] = []
+  const items: ActionLocation[] = []
   for (const line of output.split('\n')) {
     const match = TSC_ERROR_PATTERN.exec(line.trim())
-    if (match) locations.push(`${match[1]}:${match[2]}`)
+    if (match) items.push({ file: match[1] ?? '', line: Number(match[2]), message: match[3] || undefined })
   }
-  return { errors: locations.length, locations }
+  return { errors: items.length, locations: items.map((i) => `${i.file}:${i.line}`), items }
 }
 
 /** `source_dirs.exclude` (expanded on `ctx`) as repeatable `--ignore-pattern` flags for eslint. */
@@ -82,10 +86,11 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
           exec: async () => {
             const r = await run(biomeBin, ['lint', '--reporter=json', '.'], { cwd: ctx.rootPath, timeoutMs: ctx.timeoutMs })
             if (r.timedOut) return { error: 'biome timed out' }
-            if (r.exitCode === 0) return { errors: 0, locations: [] }
+            if (r.exitCode === 0) return { errors: 0, locations: [], items: [] }
             const files = parseBiomeDiagnostics(r.stdout)
             if (files.length === 0) return { error: tailLines(r.stderr || r.stdout || 'biome failed') }
-            return { errors: files.length, locations: files }
+            // biome diagnostics are parsed to file paths only (no line) — file-level annotations.
+            return { errors: files.length, locations: files, items: files.map((f) => ({ file: f })) }
           },
         })
       }
@@ -119,6 +124,7 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
 
       let errors = 0
       const locations: string[] = []
+      const items: ActionLocation[] = []
       for (const job of jobs) {
         const outcome = await job.exec()
         if ('error' in outcome) {
@@ -126,6 +132,7 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
         }
         errors += outcome.errors
         locations.push(...outcome.locations)
+        items.push(...outcome.items)
       }
 
       const current = { errors }
@@ -144,6 +151,7 @@ export function createStaticAnalysisGate(deps: ToolRunnerDeps = {}): Gate {
           priority: 1,
           message: `Fix ${errors} static analysis error(s)`,
           files: locations,
+          locations: items,
         },
       ]
       return { status: 'fail', message: `${errors} errors (baseline: ${base.errors})`, baseline: base, current, actions }

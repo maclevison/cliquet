@@ -80,11 +80,62 @@ describe('formatHuman', () => {
 })
 
 describe('formatGithub', () => {
-  it('block → ::error::, warn → ::warning::, gates grouped', () => {
+  it('block → ::error::, warn → ::warning::, gates grouped (summary fallback when no locations)', () => {
     const out = formatGithub(sample)
     expect(out).toContain('::group::')
     expect(out).toContain('::error::Fix 2 style violations')
     expect(out).toContain('::warning::1 function with CCN > 20')
     expect(out).toContain('::endgroup::')
+    expect(out).toContain('  src/a.ts') // freeform dump for locationless actions
+  })
+
+  it('emits inline annotations (file,line,message) when an action has locations', () => {
+    const r: CheckResult = {
+      ...sample,
+      actions: [
+        {
+          gate: 'security',
+          type: 'FIX SEC',
+          severity: 'block',
+          priority: 0,
+          message: 'Fix 1 security finding(s)',
+          files: ['src/a.ts:7 [eval_usage] Dynamic code evaluation'],
+          locations: [{ file: 'src/a.ts', line: 7, message: '[eval_usage] Dynamic code evaluation' }],
+        },
+      ],
+    }
+    expect(formatGithub(r)).toContain('::error file=src/a.ts,line=7::[eval_usage] Dynamic code evaluation')
+  })
+
+  it('omits line for file-level locations, escapes the message, and prepends the path prefix', () => {
+    const r: CheckResult = {
+      ...sample,
+      actions: [
+        {
+          gate: 'style',
+          type: 'FIX STYLE',
+          severity: 'block',
+          priority: 2,
+          message: 'Fix style',
+          files: ['src/x.ts'],
+          locations: [{ file: 'src/x.ts', message: 'line one\nline two' }],
+        },
+      ],
+    }
+    const out = formatGithub(r, 'apps/web')
+    expect(out).toContain('::error file=apps/web/src/x.ts::line one%0Aline two')
+    expect(out).not.toMatch(/file=[^:]*:[0-9]/) // no line= for a file-level location
+  })
+
+  it('caps annotations and summarizes the overflow', () => {
+    const locations = Array.from({ length: 25 }, (_, i) => ({ file: `src/f${i}.ts`, line: i + 1, message: 'err' }))
+    const r: CheckResult = {
+      ...sample,
+      actions: [{ gate: 'static_analysis', type: 'FIX SA', severity: 'block', priority: 1, message: '25 errors', files: [], locations }],
+    }
+    const out = formatGithub(r)
+    const emitted = (out.match(/::error file=/g) ?? []).length
+    expect(emitted).toBe(20)
+    expect(out).toMatch(/\+5 more error annotation/)
   })
 })

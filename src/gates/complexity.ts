@@ -33,6 +33,7 @@ export const complexityGate: Gate = {
         priority: 3,
         message: `Refactor ${blockers.length} function(s) with CCN > ${block_ccn}`,
         files: blockers.map((f) => `${f.file}:${f.line} ${f.name} (CCN ${f.ccn})`),
+        locations: blockers.map((f) => ({ file: f.file, line: f.line, message: `${f.name} (CCN ${f.ccn})` })),
       })
     }
     if (warnings.length > 0) {

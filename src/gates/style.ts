@@ -170,6 +170,7 @@ export function createStyleGate(deps: ToolRunnerDeps = {}): Gate {
           priority: 2,
           message: `Fix ${violations} style violation(s) — run \`cliquet fix\``,
           files,
+          locations: files.map((f) => ({ file: f, message: 'unformatted' })),
         },
       ]
       return { status: 'fail', message: `${violations} violations (baseline: ${base.violations})`, baseline: base, current, actions }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Command } from 'commander'
 import {
@@ -59,14 +59,14 @@ function resolveGlobalOpts(cmd: Command, env: Record<string, string | undefined>
   return { path, format, plain: opts.plain ?? false, timeoutMs: timeoutSeconds * 1000 }
 }
 
-function render(result: CheckResult, opts: GlobalOpts): string {
+function render(result: CheckResult, opts: GlobalOpts, githubPathPrefix = ''): string {
   switch (opts.format) {
     case 'json':
       return formatJson(result, { pretty: false })
     case 'json-pretty':
       return formatJson(result, { pretty: true })
     case 'github':
-      return formatGithub(result)
+      return formatGithub(result, githubPathPrefix)
     default:
       return formatHuman(result, { plain: opts.plain })
   }
@@ -153,7 +153,10 @@ async function doCheck(opts: GlobalOpts, io: Io, runFixersFirst: boolean): Promi
     await runAllFixers(ctx, io)
     result = await runCheck(ctx, baseline) // exit code reflects the second check (spec §3)
   }
-  io.stdout(render(result, opts))
+  // github annotations resolve `file=` against the checkout root (repoRoot); gates report relative
+  // to --path. Prefix the difference so subdir runs annotate the right paths (empty when they match).
+  const githubPathPrefix = ctx.repoRoot ? relative(ctx.repoRoot, ctx.rootPath) : ''
+  io.stdout(render(result, opts, githubPathPrefix))
   return result.result === 'pass' ? 0 : 1
 }
 
