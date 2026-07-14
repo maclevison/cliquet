@@ -128,8 +128,22 @@ function directiveRules(text: string, re: RegExp): ReadonlySet<string> {
   return new Set(beforeReason.split(',').map((s) => s.trim()).filter(Boolean))
 }
 
-/** Splits the content ONCE and evaluates the enabled rules line by line. */
-export function runContentRules(file: string, content: string, enabled: string[]): SecurityFinding[] {
+/** A suppression directive that named a rule but suppressed nothing (misplaced, or a typo'd/disabled
+ *  name) — surfaced as a `warn`, like eslint's report-unused-disable-directives. */
+export interface DirectiveUse {
+  file: string
+  line: number
+  rule: string
+}
+
+/** Splits the content ONCE and evaluates the enabled rules line by line. When `unusedOut` is passed,
+ *  also collects suppression directives that suppressed nothing. */
+export function runContentRules(
+  file: string,
+  content: string,
+  enabled: string[],
+  unusedOut?: DirectiveUse[],
+): SecurityFinding[] {
   const rules: Array<[string, LineRule]> = []
   for (const name of enabled) {
     const rule = CONTENT_RULES[name]
@@ -138,7 +152,7 @@ export function runContentRules(file: string, content: string, enabled: string[]
   if (rules.length === 0) return []
   const findings: SecurityFinding[] = []
   const lines = content.split('\n')
-  // File-level directives (`// cliquet-ignore-file <rule>…`) suppress a rule across the whole file.
+  // File-level directives (the IGNORE_FILE form) suppress a rule across the whole file.
   // Cheap substring guard so the common no-directive case skips the per-line scan.
   const fileSuppressed = new Set<string>()
   if (content.includes('cliquet-ignore-file')) {
@@ -157,5 +171,40 @@ export function runContentRules(file: string, content: string, enabled: string[]
       findings.push({ rule: name, file, line: i + 1, message: rule.message })
     }
   }
+  if (unusedOut !== undefined) collectUnusedDirectives(file, lines, rules, unusedOut)
   return findings
+}
+
+/** A directive rule is UNUSED when it names an enabled rule that no line in its scope actually trips
+ *  (a misplaced directive — the same-line/next-line gotcha), or an unknown rule name (a typo). A
+ *  known-but-disabled rule is intentional, not flagged. Scope: same-line = its own line, next-line =
+ *  the following line, file = the whole file. */
+function collectUnusedDirectives(
+  file: string,
+  lines: string[],
+  enabledRules: Array<[string, LineRule]>,
+  out: DirectiveUse[],
+): void {
+  if (!lines.some((l) => l.includes('cliquet-ignore'))) return
+  const enabled = new Map(enabledRules)
+  const fires = (rule: LineRule, scope: string[]): boolean => scope.some((l) => rule.matches(l))
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? ''
+    const forms: Array<[ReadonlySet<string>, string[]]> = [
+      [directiveRules(line, IGNORE_SAME_LINE), [line]],
+      [directiveRules(line, IGNORE_NEXT_LINE), [lines[i + 1] ?? '']],
+      [directiveRules(line, IGNORE_FILE), lines],
+    ]
+    for (const [names, scope] of forms) {
+      for (const name of names) {
+        const rule = enabled.get(name)
+        if (rule !== undefined) {
+          if (!fires(rule, scope)) out.push({ file, line: i + 1, rule: name })
+        } else if (!(name in CONTENT_RULES)) {
+          out.push({ file, line: i + 1, rule: name }) // unknown name (typo)
+        }
+        // known but disabled → intentional, not flagged
+      }
+    }
+  }
 }

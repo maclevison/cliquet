@@ -87,6 +87,15 @@ describe('securityGate', () => {
     expect(r.status).toBe('pass')
   })
 
+  it('emits a warn for a misplaced (unused) cliquet-ignore directive', async () => {
+    writeFileSync(join(root, 'src', 'bad.ts'), 'eval(x) // cliquet-ignore-next-line eval_usage')
+    const baseline = baselineNoFreshness()
+    const r = await gateWith(fixture('npm-audit-clean.json')).run(createProjectContext(root, baseline, 300_000), baseline)
+    const warn = r.actions.find((a) => a.type === 'UNUSED DIRECTIVE')
+    expect(warn?.severity).toBe('warn')
+    expect(warn?.files.some((f) => f.includes('eval_usage'))).toBe(true)
+  })
+
   describe('security.suppress', () => {
     async function runWithSuppress(suppress: Record<string, string[]>, src: string) {
       writeFileSync(join(root, 'src', 'bad.ts'), src)

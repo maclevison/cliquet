@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { CONTENT_RULES, runContentRules } from '../../../src/security/content-rules.js'
+import { CONTENT_RULES, runContentRules, type DirectiveUse } from '../../../src/security/content-rules.js'
 
 function run(rule: string, content: string, file = 'src/a.ts') {
   if (!CONTENT_RULES[rule]) throw new Error(`regra desconhecida: ${rule}`)
@@ -201,6 +201,37 @@ describe('file-level suppression (cliquet-ignore-file)', () => {
   })
 })
 
+describe('unused-directive detection', () => {
+  function unusedFor(content: string, enabled = ['eval_usage', 'sql_injection']): DirectiveUse[] {
+    const out: DirectiveUse[] = []
+    runContentRules('a.ts', content, enabled, out)
+    return out
+  }
+
+  it('flags a misplaced next-line directive (its scope line does not match the rule)', () => {
+    // the classic gotcha: next-line points at line 2 (absent), while the eval on line 1 still fires
+    expect(unusedFor('eval(x) // cliquet-ignore-next-line eval_usage')).toEqual([{ file: 'a.ts', line: 1, rule: 'eval_usage' }])
+  })
+
+  it('does NOT flag correctly-placed directives (all three forms)', () => {
+    expect(unusedFor('eval(x) // cliquet-ignore eval_usage')).toEqual([])
+    expect(unusedFor('// cliquet-ignore-next-line eval_usage\neval(x)')).toEqual([])
+    expect(unusedFor('// cliquet-ignore-file eval_usage\neval(x)')).toEqual([])
+  })
+
+  it('flags a file-directive for a rule that never fires in the file', () => {
+    expect(unusedFor('// cliquet-ignore-file eval_usage\nconst a = 1')).toEqual([{ file: 'a.ts', line: 1, rule: 'eval_usage' }])
+  })
+
+  it('flags an unknown rule name (typo)', () => {
+    expect(unusedFor('eval(x) // cliquet-ignore eval_usag')).toEqual([{ file: 'a.ts', line: 1, rule: 'eval_usag' }])
+  })
+
+  it('does not populate anything when no out-array is passed (findings-only contract unchanged)', () => {
+    expect(runContentRules('a.ts', 'eval(x) // cliquet-ignore eval_usage', ['eval_usage'])).toEqual([])
+  })
+})
+
 describe('all rules', () => {
   it('report the correct finding line', () => {
     const findings = run('eval_usage', 'const a = 1\nconst b = 2\neval(x)')
@@ -219,7 +250,9 @@ describe('all rules', () => {
       join(import.meta.dirname, '..', '..', '..', 'src', 'security', 'content-rules.ts'),
       'utf8',
     )
-    const findings = runContentRules('src/security/content-rules.ts', selfSource, Object.keys(CONTENT_RULES))
+    const unused: DirectiveUse[] = []
+    const findings = runContentRules('src/security/content-rules.ts', selfSource, Object.keys(CONTENT_RULES), unused)
     expect(findings).toEqual([])
+    expect(unused).toEqual([]) // the file's own `cliquet-ignore` mentions must not parse as directives
   })
 })

@@ -4,7 +4,7 @@ import picomatch from 'picomatch'
 import type { Action, Gate, GateResult, PackageManager, ProjectContext } from '../types.js'
 import { expandExcludePatterns, toPosix } from '../context.js'
 import { listSourceFiles } from '../source-files.js'
-import { CONTENT_RULES, runContentRules, type SecurityFinding } from '../security/content-rules.js'
+import { CONTENT_RULES, runContentRules, type DirectiveUse, type SecurityFinding } from '../security/content-rules.js'
 import {
   checkGitignoreSensitive,
   checkPackageFreshness,
@@ -90,11 +90,12 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
 
       // Enabled content rules — single split per file in runContentRules
       const enabledContentRules = Object.keys(CONTENT_RULES).filter((name) => rules[name as keyof typeof rules])
+      const unusedDirectives: DirectiveUse[] = []
       if (enabledContentRules.length > 0) {
         for (const file of listSourceFiles(ctx.sourceDirs, ctx.isExcluded)) {
           const content = readFileSync(file, 'utf8')
           const rel = relative(ctx.rootPath, file)
-          findings.push(...runContentRules(rel, content, enabledContentRules))
+          findings.push(...runContentRules(rel, content, enabledContentRules, unusedDirectives))
         }
       }
 
@@ -156,6 +157,20 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
           priority: 10,
           message: `Suppressed ${suppressed.length} security finding(s) via security.suppress`,
           files: suppressed.map((f) => `${f.file}:${f.line} [${f.rule}] ${f.message}`),
+        })
+      }
+      if (unusedDirectives.length > 0) {
+        // Build the directive token via concatenation so these very message strings don't self-trip
+        // the unused-directive scan when the security gate reads cliquet's own source (dogfooding).
+        const token = 'cliquet-' + 'ignore'
+        actions.push({
+          gate: 'security',
+          type: 'UNUSED DIRECTIVE',
+          severity: 'warn',
+          priority: 10,
+          message: `${unusedDirectives.length} unused ${token} directive(s) — the named rule isn't triggered in scope (misplaced, or a typo'd/disabled rule)`,
+          files: unusedDirectives.map((d) => `${d.file}:${d.line} [${d.rule}]`),
+          locations: unusedDirectives.map((d) => ({ file: d.file, line: d.line, message: `unused ${token} [${d.rule}]` })),
         })
       }
       if (advisoriesFail) {
