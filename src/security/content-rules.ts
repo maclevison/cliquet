@@ -110,6 +110,21 @@ export const CONTENT_RULES: Record<string, LineRule> = {
   ]),
 }
 
+// Inline suppression directives. A rule name is REQUIRED (no bare form). The names are read
+// TOKENIZED — comma-separated, up to an em-dash reason delimiter — so a rule name appearing in the
+// free-text reason never over-suppresses. The same-line pattern excludes the "-next-line" variant so
+// the two never collide. (These literals match no content rule, so the self-scan stays at 0.)
+const IGNORE_SAME_LINE = /cliquet-ignore(?!-next-line)\s+([^\n]*)/i
+const IGNORE_NEXT_LINE = /cliquet-ignore-next-line\s+([^\n]*)/i
+const NO_RULES: ReadonlySet<string> = new Set()
+
+function directiveRules(text: string, re: RegExp): ReadonlySet<string> {
+  const m = re.exec(text)
+  if (m === null) return NO_RULES
+  const beforeReason = (m[1] ?? '').split('—')[0] ?? ''
+  return new Set(beforeReason.split(',').map((s) => s.trim()).filter(Boolean))
+}
+
 /** Splits the content ONCE and evaluates the enabled rules line by line. */
 export function runContentRules(file: string, content: string, enabled: string[]): SecurityFinding[] {
   const rules: Array<[string, LineRule]> = []
@@ -122,10 +137,14 @@ export function runContentRules(file: string, content: string, enabled: string[]
   const lines = content.split('\n')
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? ''
+    const prev = i > 0 ? (lines[i - 1] ?? '') : ''
     for (const [name, rule] of rules) {
-      if (rule.matches(line)) {
-        findings.push({ rule: name, file, line: i + 1, message: rule.message })
+      if (!rule.matches(line)) continue
+      // Inline suppression check runs only on already-matched lines (the common case is no match).
+      if (directiveRules(line, IGNORE_SAME_LINE).has(name) || directiveRules(prev, IGNORE_NEXT_LINE).has(name)) {
+        continue
       }
+      findings.push({ rule: name, file, line: i + 1, message: rule.message })
     }
   }
   return findings

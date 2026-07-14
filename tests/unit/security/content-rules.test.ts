@@ -132,6 +132,42 @@ describe('unsafe_target_blank', () => {
   })
 })
 
+describe('inline suppression (cliquet-ignore)', () => {
+  it('same-line directive suppresses the named rule', () => {
+    expect(run('eval_usage', 'eval(input) // cliquet-ignore eval_usage')).toHaveLength(0)
+  })
+
+  it('next-line directive suppresses the rule on the following line', () => {
+    expect(run('eval_usage', '// cliquet-ignore-next-line eval_usage\neval(input)')).toHaveLength(0)
+  })
+
+  it('a bare directive (no rule named) does NOT suppress', () => {
+    expect(run('eval_usage', 'eval(input) // cliquet-ignore')).toHaveLength(1)
+  })
+
+  it('naming a different rule does not suppress', () => {
+    expect(run('eval_usage', 'eval(input) // cliquet-ignore sql_injection')).toHaveLength(1)
+  })
+
+  it('a next-line directive on the SAME line as the finding does not suppress it', () => {
+    expect(run('eval_usage', 'eval(input) // cliquet-ignore-next-line eval_usage')).toHaveLength(1)
+  })
+
+  it('the free-text reason after an em-dash does not over-suppress another rule named in it', () => {
+    // Line trips BOTH eval_usage and sql_injection; the directive suppresses only eval_usage,
+    // and the reason mentioning sql_injection must NOT silence it.
+    const code = 'eval(input); const q = db.query(`SELECT ${x} FROM t`) // cliquet-ignore eval_usage — see sql_injection note'
+    const findings = runContentRules('a.ts', code, ['eval_usage', 'sql_injection'])
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.rule).toBe('sql_injection')
+  })
+
+  it('a comma list suppresses each named rule', () => {
+    const code = 'eval(input); const q = db.query(`SELECT ${x} FROM t`) // cliquet-ignore eval_usage, sql_injection'
+    expect(runContentRules('a.ts', code, ['eval_usage', 'sql_injection'])).toHaveLength(0)
+  })
+})
+
 describe('all rules', () => {
   it('report the correct finding line', () => {
     const findings = run('eval_usage', 'const a = 1\nconst b = 2\neval(x)')
