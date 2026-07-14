@@ -114,8 +114,11 @@ export const CONTENT_RULES: Record<string, LineRule> = {
 // TOKENIZED — comma-separated, up to an em-dash reason delimiter — so a rule name appearing in the
 // free-text reason never over-suppresses. The same-line pattern excludes the "-next-line" variant so
 // the two never collide. (These literals match no content rule, so the self-scan stays at 0.)
-const IGNORE_SAME_LINE = /cliquet-ignore(?!-next-line)\s+([^\n]*)/i
+// The three forms never collide: the required whitespace after each token forces its exact boundary
+// (e.g. `cliquet-ignore\s+` can't match `cliquet-ignore-file`, where a "-" follows, not whitespace).
+const IGNORE_SAME_LINE = /cliquet-ignore(?!-next-line|-file)\s+([^\n]*)/i
 const IGNORE_NEXT_LINE = /cliquet-ignore-next-line\s+([^\n]*)/i
+const IGNORE_FILE = /cliquet-ignore-file\s+([^\n]*)/i
 const NO_RULES: ReadonlySet<string> = new Set()
 
 function directiveRules(text: string, re: RegExp): ReadonlySet<string> {
@@ -135,11 +138,18 @@ export function runContentRules(file: string, content: string, enabled: string[]
   if (rules.length === 0) return []
   const findings: SecurityFinding[] = []
   const lines = content.split('\n')
+  // File-level directives (`// cliquet-ignore-file <rule>…`) suppress a rule across the whole file.
+  // Cheap substring guard so the common no-directive case skips the per-line scan.
+  const fileSuppressed = new Set<string>()
+  if (content.includes('cliquet-ignore-file')) {
+    for (const line of lines) for (const r of directiveRules(line, IGNORE_FILE)) fileSuppressed.add(r)
+  }
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? ''
     const prev = i > 0 ? (lines[i - 1] ?? '') : ''
     for (const [name, rule] of rules) {
       if (!rule.matches(line)) continue
+      if (fileSuppressed.has(name)) continue
       // Inline suppression check runs only on already-matched lines (the common case is no match).
       if (directiveRules(line, IGNORE_SAME_LINE).has(name) || directiveRules(prev, IGNORE_NEXT_LINE).has(name)) {
         continue

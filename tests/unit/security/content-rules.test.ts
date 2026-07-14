@@ -168,6 +168,39 @@ describe('inline suppression (cliquet-ignore)', () => {
   })
 })
 
+describe('file-level suppression (cliquet-ignore-file)', () => {
+  it('suppresses every occurrence of the named rule in the file', () => {
+    expect(run('eval_usage', '// cliquet-ignore-file eval_usage\neval(a)\neval(b)')).toHaveLength(0)
+  })
+
+  it('is per-rule: another rule in the file still fires', () => {
+    const code = '// cliquet-ignore-file eval_usage\neval(a)\nconst q = db.query(`SELECT ${x} FROM t`)'
+    const findings = runContentRules('a.ts', code, ['eval_usage', 'sql_injection'])
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.rule).toBe('sql_injection')
+  })
+
+  it('naming a different rule does not suppress', () => {
+    expect(run('eval_usage', '// cliquet-ignore-file sql_injection\neval(a)')).toHaveLength(1)
+  })
+
+  it('a comma list suppresses each named rule file-wide', () => {
+    const code = '// cliquet-ignore-file eval_usage, sql_injection\neval(a)\ndb.query(`SELECT ${x} FROM t`)'
+    expect(runContentRules('a.ts', code, ['eval_usage', 'sql_injection'])).toHaveLength(0)
+  })
+
+  it('the three directive forms coexist without colliding', () => {
+    const code = [
+      '// cliquet-ignore-file eval_usage',
+      'eval(a)', // file-suppressed
+      'const q = db.query(`SELECT ${x} FROM t`) // cliquet-ignore sql_injection', // same-line
+      '// cliquet-ignore-next-line unsafe_target_blank',
+      '<a href="x" target="_blank">y</a>', // next-line
+    ].join('\n')
+    expect(runContentRules('a.ts', code, ['eval_usage', 'sql_injection', 'unsafe_target_blank'])).toHaveLength(0)
+  })
+})
+
 describe('all rules', () => {
   it('report the correct finding line', () => {
     const findings = run('eval_usage', 'const a = 1\nconst b = 2\neval(x)')

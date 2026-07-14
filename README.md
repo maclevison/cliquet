@@ -138,7 +138,9 @@ const jwt = 'eyJ...'  // cliquet-ignore hardcoded_secrets — redaction-test fix
 someLineThatTripsEvalUsage()
 ```
 
-A rule name is required (there is no "ignore everything" form), and names are read up to an `—` reason delimiter, so a rule mentioned in your explanation is never silenced by accident.
+For a rule that should be off for a whole file, put `// cliquet-ignore-file <rule>[, <rule>...]` anywhere in it (typically at the top).
+
+A rule name is required in every form (there is no "ignore everything"), and names are read up to an `—` reason delimiter, so a rule mentioned in your explanation is never silenced by accident.
 
 Both mechanisms **remove a false positive — they never become a ratchet number** (unlike a threshold you grandfather). Every suppression is reported as a `warn` in the output (`SUPPRESSED: N finding(s)`, with file and rule) and never affects the exit code — the trail stays visible to reviewers.
 
