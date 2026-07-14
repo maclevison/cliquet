@@ -144,6 +144,8 @@ A rule name is required in every form (there is no "ignore everything"), and nam
 
 Both mechanisms **remove a false positive — they never become a ratchet number** (unlike a threshold you grandfather). Every suppression is reported as a `warn` in the output (`SUPPRESSED: N finding(s)`, with file and rule) and never affects the exit code — the trail stays visible to reviewers.
 
+A directive that suppresses nothing — a misplaced `cliquet-ignore-next-line`, or a typo'd rule name — is reported as an **unused directive** `warn` (like ESLint's `report-unused-disable-directives`), so a wrong directive doesn't silently leave the finding in place.
+
 ## Built for AI coding agents
 
 > "I don't review code written by agents. I measure things like test coverage,
