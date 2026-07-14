@@ -85,7 +85,7 @@ Tools are detected by their config files (`.prettierrc`, `biome.json`, `eslint.c
 - **Equal → pass.**
 - **Improved → pass**, and the report suggests updating the baseline so the ratchet tightens.
 
-**Adopting on a legacy codebase:** defaults are aspirational, so the first `check` may fail. Edit the baseline thresholds to the values `check` reports (never looser than measured) — from there the ratchet holds that line. Security findings are zero-tolerance and have no threshold: fix the code, or disable the specific rule under `security.rules`.
+**Adopting on a legacy codebase:** defaults are aspirational, so the first `check` may fail. Edit the baseline thresholds to the values `check` reports (never looser than measured) — from there the ratchet holds that line. Security findings are zero-tolerance and have no threshold: fix the code, disable the specific rule under `security.rules`, or — for a false positive you don't want to silence repo-wide — suppress it narrowly with [`security.suppress`](#suppressing-security-false-positives).
 
 ### Scoping with `source_dirs`
 
@@ -103,6 +103,35 @@ Tools are detected by their config files (`.prettierrc`, `biome.json`, `eslint.c
 The exclusion reaches the built-in gates (file size, complexity, security content rules, condition-order), jscpd (duplication) and every eslint invocation — including the `cliquet fix` fixers, so auto-fixes never rewrite generated files. It does **not** reach prettier/biome/tsc/coverage: those tools have their own ignore mechanisms (`.prettierignore`, `biome.json`, tsconfig `exclude`, your test runner's coverage config).
 
 Patterns containing `,` or `{}` and negation patterns (`!`) are rejected at load with exit 2 — list patterns separately instead.
+
+### Suppressing security false positives
+
+The source-level security rules are zero-tolerance, so a false positive (a `new Function(...)` inside a comment, a fake secret in a redaction test's fixtures) would otherwise force you to disable the whole rule. Two narrow, **visible** escapes let you keep the rule everywhere else:
+
+```jsonc
+{
+  "security": {
+    "suppress": {
+      "**/*.test.ts": ["hardcoded_secrets"],   // test fixtures carry fake secrets
+      "src/zod-config.ts": ["eval_usage"]       // one file, one rule
+    }
+  }
+}
+```
+
+`suppress` maps a picomatch glob (same rules as `source_dirs.exclude`) to the content rules whose findings are dropped under that path. Only content-rule names are valid (not `gitignore_sensitive` / `package_freshness`); an unknown name is a load error.
+
+For one-off cases, an **inline** comment is line-narrow:
+
+```ts
+const jwt = 'eyJ...'  // cliquet-ignore hardcoded_secrets — redaction-test fixture
+// cliquet-ignore-next-line eval_usage
+someLineThatTripsEvalUsage()
+```
+
+A rule name is required (there is no "ignore everything" form), and names are read up to an `—` reason delimiter, so a rule mentioned in your explanation is never silenced by accident.
+
+Both mechanisms **remove a false positive — they never become a ratchet number** (unlike a threshold you grandfather). Every suppression is reported as a `warn` in the output (`SUPPRESSED: N finding(s)`, with file and rule) and never affects the exit code — the trail stays visible to reviewers.
 
 ## Built for AI coding agents
 
