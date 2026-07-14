@@ -134,6 +134,17 @@ describe('cliquet check', () => {
     expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(true)
   })
 
+  it('the auto-created baseline is MEASURED (consistent with init), not defaults', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cliquet-e2e-autocreate-'))
+    tmpDirs.push(dir)
+    writeFileSync(join(dir, 'package.json'), '{"name":"a","version":"1.0.0"}')
+    mkdirSync(join(dir, 'src'))
+    writeFileSync(join(dir, 'src', 'a.ts'), 'export function f(x: unknown) {\n  if (heavy(x) && ready) return 1\n  return 0\n}\n')
+    await run(['check', '--path', dir, '--format', 'json']) // no baseline → auto-create
+    const baseline = JSON.parse(readFileSync(join(dir, 'cliquet.baseline.json'), 'utf8'))
+    expect(baseline.performance.violations).toBe(1) // measured; the old cheap path would leave the default 0
+  })
+
   it('fails (exit 1) when a gate regresses', async () => {
     const dir = copyFixture('failing')
     const code = await run(['check', '--path', dir, '--format', 'json'])

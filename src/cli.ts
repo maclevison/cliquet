@@ -140,10 +140,15 @@ async function doCheck(opts: GlobalOpts, io: Io, runFixersFirst: boolean): Promi
         `no package.json in ${opts.path} — refusing to auto-create ${BASELINE_FILENAME}; run from the project root or pass --path`,
       )
     }
-    const baseline = measuredBaseline(opts.path)
+    // Auto-create MEASURES (same as `init`), so a first `check` in a virgin dir starts from where
+    // the code is instead of failing against defaults it wouldn't reproduce. The extra gate run is
+    // one-time — once the baseline exists this branch is skipped. (`measuredBaseline` — the cheap
+    // defaults path — is now only reached via `init --defaults`.)
+    const { baseline, notes } = await measureBaselineByGates(opts.path, opts.timeoutMs)
     saveBaseline(opts.path, baseline) // auto-create (spec §4)
     await formatGeneratedBaseline(opts.path, baseline, opts.timeoutMs)
-    io.stderr(`${BASELINE_FILENAME} created with defaults\n`)
+    io.stderr(`${BASELINE_FILENAME} created — measured at the project's current state\n`)
+    for (const n of notes) io.stderr(`  note: ${n}\n`)
   }
   const baseline = loadBaseline(opts.path)
   const ctx = createProjectContext(opts.path, baseline, opts.timeoutMs)
