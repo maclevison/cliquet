@@ -118,8 +118,10 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
         ;(hit ? suppressed : kept).push(f)
       }
 
-      // Package manager audit
-      const auditRaw = await runAudit(ctx)
+      // Package manager audit — skipped entirely when the advisory ratchet is off (no network round
+      // trip, advisories never fail the gate). Everything downstream already handles auditRaw === null.
+      const ratchetOff = baseline.security.advisory_ratchet === false
+      const auditRaw = ratchetOff ? null : await runAudit(ctx)
       const audit = auditRaw === null ? null : parseAudit(ctx.packageManager, auditRaw)
       if (auditRaw !== null && audit === null) {
         // output present but unparseable is NOT a legitimate skip — masking advisories would be a false pass
@@ -170,8 +172,11 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       // A root lockfile means the advisories cover the WHOLE monorepo, not just this workspace
       const workspaceWide =
         ctx.lockfileDir !== null && ctx.lockfileDir !== ctx.rootPath ? ' (workspace-wide audit)' : ''
-      const auditNote =
-        audit === null ? 'audit skipped (no lockfile)' : `${criticalHigh} critical/high advisories${workspaceWide}`
+      const auditNote = ratchetOff
+        ? 'advisory ratchet off (security.advisory_ratchet=false)'
+        : audit === null
+          ? 'audit skipped (no lockfile)'
+          : `${criticalHigh} critical/high advisories${workspaceWide}`
       // Audit didn't run → advisories was NOT measured: omit the key instead of
       // reporting 0 as if it were a clean measurement.
       const current =

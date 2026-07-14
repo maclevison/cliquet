@@ -136,6 +136,25 @@ describe('securityGate', () => {
     expect(r.message).toContain('advisories')
   })
 
+  it('advisory_ratchet=false: advisories never fail the gate and runAudit is not called', async () => {
+    writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
+    let auditCalled = false
+    const gate = createSecurityGate({
+      runAudit: async () => {
+        auditCalled = true
+        return fixture('npm-audit-with-vulns.json') // 2 critical/high — would fail if ratcheted
+      },
+      freshnessFetcher: async () => ({ time: {} }),
+    })
+    const baseline = baselineNoFreshness()
+    baseline.security.advisory_ratchet = false
+    const r = await gate.run(createProjectContext(root, baseline, 300_000), baseline)
+    expect(r.status).toBe('pass')
+    expect(auditCalled).toBe(false)
+    expect(r.message).toMatch(/advisory ratchet off/i)
+    expect(r.message).not.toMatch(/no lockfile/i)
+  })
+
   it('missing audit (no lockfile) does not fail the gate and does not report advisories as measured', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()

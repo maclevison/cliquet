@@ -33,6 +33,7 @@ describe('DEFAULT_BASELINE', () => {
     })
     expect(Object.keys(DEFAULT_BASELINE.security.rules)).toHaveLength(12)
     expect(DEFAULT_BASELINE.security.advisories).toBe(0)
+    expect(DEFAULT_BASELINE.security.advisory_ratchet).toBe(true)
   })
 
   it('defaults source_dirs.exclude to []', () => {

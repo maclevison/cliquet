@@ -28,7 +28,10 @@ export interface Baseline {
   source_dirs: { paths: string[]; exclude: string[] }
   // `suppress`: glob → content-rule names whose findings under that path are dropped (visible warn,
   // never affects exit). An OPEN map — see OPEN_MAP_PATHS and the mergeSection passthrough.
-  security: { advisories: number; rules: SecurityRules; suppress: Record<string, string[]> }
+  // `advisory_ratchet: false` drops ONLY the npm-audit advisory ratchet (a newly-disclosed CVE against
+  // an unchanged lockfile would otherwise redden CI with no diff) — content rules / gitignore / freshness
+  // still run. NOT named `audit` (collides with the "Security Audit" gate label + the `advisories` number).
+  security: { advisories: number; advisory_ratchet: boolean; rules: SecurityRules; suppress: Record<string, string[]> }
   style: { violations: number }
   static_analysis: { errors: number }
   coverage: { percentage: number }
@@ -47,6 +50,7 @@ export const DEFAULT_BASELINE: Baseline = {
   source_dirs: { paths: ['src', 'app', 'lib'], exclude: [] },
   security: {
     advisories: 0,
+    advisory_ratchet: true,
     rules: {
       hardcoded_secrets: true,
       client_exposed_secrets: true,

@@ -91,7 +91,7 @@ A few things are deliberately not auto-baselined:
 
 - **Coverage** that can't be measured (no runner, or the suite fails before writing a summary) floors to **0** with a note — raise it once tests run.
 - A gate that **errors** during `init` keeps its default, is flagged in the output, and `init` exits non-zero — a partial baseline is never trusted silently. Fix the tool and re-run `init`.
-- **Advisories** are recorded as a floor, but they come from the live registry: a newly-disclosed CVE against an unchanged lockfile can raise the count with no code change. Re-baseline (`init --force`) when that happens.
+- **Advisories** are recorded as a floor, but they come from the live registry: a newly-disclosed CVE against an unchanged lockfile can raise the count with no code change. Re-baseline (`init --force`) when that happens — or, if you don't want advisories gating CI at all, set `security.advisory_ratchet: false` (that drops only the advisory ratchet; content rules, gitignore and freshness checks still run).
 - **Security findings** are zero-tolerance and never snapshotted: fix the code, disable the rule under `security.rules`, or suppress a false positive narrowly with [`security.suppress`](#suppressing-security-false-positives).
 
 Editing `source_dirs` after `init` invalidates the measured floors — set your `paths`/`exclude` first, then `init --force`.
