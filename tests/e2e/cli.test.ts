@@ -80,18 +80,31 @@ describe('bin invoked via symlink (regression: npm creates node_modules/.bin as 
 })
 
 describe('cliquet init', () => {
-  it('creates the baseline and returns 0', async () => {
+  it('creates the baseline and returns 0 (--defaults: no measurement)', async () => {
     const dir = copyFixture('js-plain')
-    const code = await run(['init', '--path', dir])
+    const code = await run(['init', '--defaults', '--path', dir])
     expect(code).toBe(0)
     expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(true)
     const baseline = JSON.parse(readFileSync(join(dir, 'cliquet.baseline.json'), 'utf8'))
     expect(baseline.schema).toBe('cliquet/v1')
   })
 
-  it('with --force overwrites an existing baseline without asking', async () => {
+  it('measures the project by default: a condition-order issue lands in performance.violations', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cliquet-e2e-measure-'))
+    tmpDirs.push(dir)
+    writeFileSync(join(dir, 'package.json'), '{"name":"m","version":"1.0.0"}')
+    mkdirSync(join(dir, 'src'))
+    // built-in condition-order (no external tools needed): expensive call before a cheap flag in a guard
+    writeFileSync(join(dir, 'src', 'a.ts'), 'export function f(x: unknown) {\n  if (expensiveCheck(x) && ready) return 1\n  return 0\n}\n')
+    const code = await run(['init', '--path', dir])
+    expect(code).toBe(0)
+    const baseline = JSON.parse(readFileSync(join(dir, 'cliquet.baseline.json'), 'utf8'))
+    expect(baseline.performance.violations).toBe(1) // measured, not the default 0
+  })
+
+  it('with --force --defaults overwrites an existing baseline without asking', async () => {
     const dir = copyFixture('failing')
-    const code = await run(['init', '--force', '--path', dir])
+    const code = await run(['init', '--force', '--defaults', '--path', dir])
     expect(code).toBe(0)
     const baseline = JSON.parse(readFileSync(join(dir, 'cliquet.baseline.json'), 'utf8'))
     expect(baseline.file_size.max_lines).toBe(1000) // back to default
@@ -154,7 +167,7 @@ describe('cliquet check', () => {
     const dir = copyFixture('js-plain')
     chmodSync(dir, 0o555) // read-only directory → saveBaseline throws EACCES (not a ConfigError)
     try {
-      const code = await run(['init', '--path', dir])
+      const code = await run(['init', '--defaults', '--path', dir])
       expect(code).toBe(2)
       const stderr = errOut.join('')
       expect(stderr).toContain('EACCES')
@@ -239,7 +252,7 @@ describe('init guard (no package.json)', () => {
   it('--force overrides the guard (intentional non-npm project)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cliquet-e2e-init-force-'))
     tmpDirs.push(dir)
-    const code = await run(['init', '--force', '--path', dir])
+    const code = await run(['init', '--force', '--defaults', '--path', dir])
     expect(code).toBe(0)
     expect(existsSync(join(dir, 'cliquet.baseline.json'))).toBe(true)
   })

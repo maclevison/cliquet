@@ -25,6 +25,7 @@ import { createLintFixer } from './fixers/lint.js'
 import { createPerformanceFixer } from './fixers/performance.js'
 import { findDistDir, measureBundle } from './gates/bundle-size.js'
 import { parseCoverageSummary } from './gates/coverage.js'
+import { applyMeasuredBaseline, type MeasuredBaseline } from './measure-baseline.js'
 import type { CheckResult } from './types.js'
 
 export interface Io {
@@ -71,7 +72,15 @@ function render(result: CheckResult, opts: GlobalOpts): string {
   }
 }
 
-/** init measures coverage/bundle if artifacts exist on disk (spec §4). */
+/** Direct-measure the bundle into a baseline: the bundle gate skips at the default 0, so it can't be
+ *  measured by running the gates — it must be read straight from the dist dir. */
+function measureBundleInto(baseline: Baseline, rootPath: string): void {
+  const distDir = findDistDir(rootPath, baseline.bundle_size.dist_dirs)
+  if (distDir !== null) baseline.bundle_size.max_total_gzip_kb = Math.ceil(measureBundle(distDir).totalGzipKb)
+}
+
+/** The cheap baseline (`init --defaults`, and the `check` auto-create path): defaults, with coverage
+ *  and bundle read from artifacts already on disk. Does NOT run the gates. */
 function measuredBaseline(rootPath: string): Baseline {
   const baseline = structuredClone(DEFAULT_BASELINE)
   const summaryPath = join(rootPath, 'coverage', 'coverage-summary.json')
@@ -79,12 +88,20 @@ function measuredBaseline(rootPath: string): Baseline {
     const pct = parseCoverageSummary(readFileSync(summaryPath, 'utf8'))
     if (pct !== null) baseline.coverage.percentage = pct
   }
-  const distDir = findDistDir(rootPath, baseline.bundle_size.dist_dirs)
-  if (distDir !== null) {
-    const m = measureBundle(distDir)
-    baseline.bundle_size.max_total_gzip_kb = Math.ceil(m.totalGzipKb)
-  }
+  measureBundleInto(baseline, rootPath)
   return baseline
+}
+
+/** `cliquet init` default: run the gates ONCE and snapshot each count/ratio gate's measurement as the
+ *  ratchet floor, so a real (imperfect) codebase adopts the ratchet where it stands. Bundle is
+ *  direct-measured (the gate skips at the default 0). Returns notes (coverage floored to 0) and a list
+ *  of gates that ERRORED — a partial baseline the caller must surface loudly and exit non-zero on. */
+async function measureBaselineByGates(rootPath: string, timeoutMs: number): Promise<MeasuredBaseline> {
+  const ctx = createProjectContext(rootPath, DEFAULT_BASELINE, timeoutMs)
+  const result = await runCheck(ctx, DEFAULT_BASELINE)
+  const measured = applyMeasuredBaseline(result)
+  measureBundleInto(measured.baseline, rootPath)
+  return measured
 }
 
 /**
@@ -174,9 +191,10 @@ export async function main(
 
   program
     .command('init')
-    .description('create cliquet.baseline.json with default thresholds')
+    .description('measure the project and create cliquet.baseline.json at its current state')
     .option('--force', 'overwrite existing baseline without asking')
-    .action(async (cmdOpts: { force?: boolean }, cmd: Command) => {
+    .option('--defaults', 'write default thresholds without measuring (fast; the old behavior)')
+    .action(async (cmdOpts: { force?: boolean; defaults?: boolean }, cmd: Command) => {
       const opts = resolveGlobalOpts(cmd, env)
       if (!cmdOpts.force && baselineExists(opts.path)) {
         io.stderr(`${BASELINE_FILENAME} already exists — use --force to overwrite\n`)
@@ -190,10 +208,22 @@ export async function main(
           `no package.json in ${opts.path} — run from the project root, pass --path, or use --force for a non-npm project`,
         )
       }
-      const baseline = measuredBaseline(opts.path)
+      if (cmdOpts.defaults) {
+        const baseline = measuredBaseline(opts.path)
+        saveBaseline(opts.path, baseline)
+        await formatGeneratedBaseline(opts.path, baseline, opts.timeoutMs)
+        io.stdout(`${BASELINE_FILENAME} created with defaults\n`)
+        return
+      }
+      const { baseline, notes, errored } = await measureBaselineByGates(opts.path, opts.timeoutMs)
       saveBaseline(opts.path, baseline)
       await formatGeneratedBaseline(opts.path, baseline, opts.timeoutMs)
-      io.stdout(`${BASELINE_FILENAME} created\n`)
+      io.stdout(`${BASELINE_FILENAME} created — measured at the project's current state\n`)
+      for (const n of notes) io.stdout(`  note: ${n}\n`)
+      // A gate that errored means part of the baseline is a default, not a real measurement. Surface it
+      // in the OUTPUT (agents/json miss stderr) and exit non-zero so the partial baseline isn't trusted.
+      for (const e of errored) io.stdout(`  UNMEASURED: ${e}\n`)
+      if (errored.length > 0) exitCode = 1
     })
 
   program
