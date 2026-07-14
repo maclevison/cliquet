@@ -68,6 +68,16 @@ export function applyMeasuredBaseline(result: CheckResult): MeasuredBaseline {
     }
   }
 
+  // Security content findings are zero-tolerance and NOT snapshotted as a floor — so a measured
+  // baseline can still make the first `check` red. Warn explicitly so the user knows why.
+  const sec = gate('security')
+  const findings = sec ? num(sec.current.findings) : undefined
+  if (findings !== undefined && findings > 0) {
+    notes.push(
+      `${findings} security finding(s) are zero-tolerance (not baselined) and will still fail \`check\` — fix them, disable the rule in security.rules, or suppress (security.suppress / // cliquet-ignore)`,
+    )
+  }
+
   const cov = gate('coverage')
   if (cov) {
     const pct = cov.status === 'pass' || cov.status === 'fail' ? num(cov.current.percentage) : undefined

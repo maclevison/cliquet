@@ -91,6 +91,17 @@ describe('applyMeasuredBaseline', () => {
     expect(baseline.complexity.allow).toEqual({ 'src/a.ts f': 61 })
   })
 
+  it('notes that security findings still fail check (they are never snapshotted as a floor)', () => {
+    const withFindings = applyMeasuredBaseline(
+      result([{ name: 'security', status: 'fail', current: { advisories: 2, findings: 3 } }]),
+    )
+    expect(withFindings.notes.some((n) => /security finding/i.test(n) && /still fail/i.test(n))).toBe(true)
+    const clean = applyMeasuredBaseline(
+      result([{ name: 'security', status: 'pass', current: { advisories: 0, findings: 0 } }]),
+    )
+    expect(clean.notes.some((n) => /security finding/i.test(n))).toBe(false)
+  })
+
   it('leaves bundle at the default (it is direct-measured by the caller, not from the gate run)', () => {
     const { baseline } = applyMeasuredBaseline(
       result([{ name: 'bundle_size', status: 'skip', current: {} }]),
