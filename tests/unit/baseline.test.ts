@@ -22,8 +22,8 @@ describe('DEFAULT_BASELINE', () => {
     expect(DEFAULT_BASELINE.source_dirs.paths).toEqual(['src', 'app', 'lib'])
     expect(DEFAULT_BASELINE.coverage.percentage).toBe(85.0)
     expect(DEFAULT_BASELINE.duplication).toEqual({ percentage: 2.0, min_lines: 5, min_tokens: 50 })
-    expect(DEFAULT_BASELINE.file_size.max_lines).toBe(1000)
-    expect(DEFAULT_BASELINE.complexity).toEqual({ warn_ccn: 20, block_ccn: 50 })
+    expect(DEFAULT_BASELINE.file_size).toEqual({ max_lines: 1000, allow: {} })
+    expect(DEFAULT_BASELINE.complexity).toEqual({ warn_ccn: 20, block_ccn: 50, allow: {} })
     expect(DEFAULT_BASELINE.bundle_size).toEqual({
       max_total_gzip_kb: 0,
       // 0.5%: same dist gzips differently across node/zlib versions (389.88 vs
@@ -120,6 +120,36 @@ describe('security.suppress validation (open-map passthrough)', () => {
     ['non-object suppress', ['eval_usage'], /must be an object/],
   ] as const)('rejects %s with ConfigError', (_name, suppress, messageFragment) => {
     writeSuppress(suppress)
+    expect(() => loadBaseline(dir)).toThrow(ConfigError)
+    expect(() => loadBaseline(dir)).toThrow(messageFragment)
+  })
+})
+
+describe('file_size.allow / complexity.allow validation (open-map passthrough, numeric)', () => {
+  function writeAllow(section: 'file_size' | 'complexity', allow: unknown) {
+    writeFileSync(join(dir, BASELINE_FILENAME), JSON.stringify({ schema: 'cliquet/v1', [section]: { allow } }))
+  }
+
+  it('defaults both allow maps to {}', () => {
+    expect(DEFAULT_BASELINE.file_size.allow).toEqual({})
+    expect(DEFAULT_BASELINE.complexity.allow).toEqual({})
+  })
+
+  it('PRESERVES entries through load (path/id → number)', () => {
+    writeAllow('file_size', { 'src/big.ts': 2030 })
+    expect(loadBaseline(dir).file_size.allow).toEqual({ 'src/big.ts': 2030 })
+    writeAllow('complexity', { 'src/a.ts fn': 61 })
+    expect(loadBaseline(dir).complexity.allow).toEqual({ 'src/a.ts fn': 61 })
+  })
+
+  it.each([
+    ['non-number value', { 'src/a.ts': '2030' }, /must be a positive integer/],
+    ['negative value', { 'src/a.ts': -5 }, /must be a positive integer/],
+    ['zero value', { 'src/a.ts': 0 }, /must be a positive integer/],
+    ['float value', { 'src/a.ts': 12.5 }, /must be a positive integer/],
+    ['non-object allow', [1, 2], /must be an object/],
+  ] as const)('rejects %s with ConfigError', (_name, allow, messageFragment) => {
+    writeAllow('file_size', allow)
     expect(() => loadBaseline(dir)).toThrow(ConfigError)
     expect(() => loadBaseline(dir)).toThrow(messageFragment)
   })

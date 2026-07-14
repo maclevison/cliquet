@@ -33,8 +33,11 @@ export interface Baseline {
   static_analysis: { errors: number }
   coverage: { percentage: number }
   duplication: { percentage: number; min_lines: number; min_tokens: number }
-  file_size: { max_lines: number }
-  complexity: { warn_ccn: number; block_ccn: number }
+  // `allow`: grandfather map (path → line count / `"file name"` → CCN). Unlike security.suppress
+  // (which removes a false positive), an allow entry IS a ratchet high-water mark — the file/function
+  // may hold or shrink below it, never grow past it. Open maps — see OPEN_MAP_VALIDATORS.
+  file_size: { max_lines: number; allow: Record<string, number> }
+  complexity: { warn_ccn: number; block_ccn: number; allow: Record<string, number> }
   performance: { violations: number }
   bundle_size: { max_total_gzip_kb: number; tolerance_percent: number; dist_dirs: string[] }
 }
@@ -64,8 +67,8 @@ export const DEFAULT_BASELINE: Baseline = {
   static_analysis: { errors: 0 },
   coverage: { percentage: 85.0 },
   duplication: { percentage: 2.0, min_lines: 5, min_tokens: 50 },
-  file_size: { max_lines: 1000 },
-  complexity: { warn_ccn: 20, block_ccn: 50 },
+  file_size: { max_lines: 1000, allow: {} },
+  complexity: { warn_ccn: 20, block_ccn: 50, allow: {} },
   performance: { violations: 0 },
   // tolerance 0.5%: identical dist gzips differently across node/zlib versions — zero tolerance flaps dev vs CI
   bundle_size: { max_total_gzip_kb: 0, tolerance_percent: 0.5, dist_dirs: ['dist', 'build', '.output'] },
@@ -124,9 +127,13 @@ function mergeWithDefaults(raw: Record<string, unknown>): Baseline {
 const CONTENT_RULE_NAMES = new Set(Object.keys(CONTENT_RULES))
 
 /** Sections that hold an OPEN map (arbitrary user keys) rather than a fixed default shape.
- *  mergeSection's default-key whitelist would erase these on load, so they get a validated
- *  passthrough instead. Extensible (e.g. a future `file_size.allow`). */
-const OPEN_MAP_PATHS = new Set(['security.suppress'])
+ *  mergeSection's default-key whitelist would erase these on load, so each gets a validated
+ *  passthrough instead, keyed by its dotted path. */
+const OPEN_MAP_VALIDATORS: Record<string, (path: string, value: unknown) => Record<string, unknown>> = {
+  'security.suppress': validateSuppressMap,
+  'file_size.allow': validateAllowMap,
+  'complexity.allow': validateAllowMap,
+}
 
 /** Merges a single section, validating each key against the default (recursive for security.rules). */
 function mergeSection(
@@ -140,8 +147,9 @@ function mergeSection(
     if (value === undefined) continue
     // Open map: pass the user's entries through (validated), never key-filter against the
     // empty default — that would silently drop every entry.
-    if (OPEN_MAP_PATHS.has(`${path}.${key}`)) {
-      out[key] = validateSuppressMap(`${path}.${key}`, value)
+    const openMapValidator = OPEN_MAP_VALIDATORS[`${path}.${key}`]
+    if (openMapValidator !== undefined) {
+      out[key] = openMapValidator(`${path}.${key}`, value)
       continue
     }
     const defaultValue = defaults[key]
@@ -236,6 +244,23 @@ function validateSuppressMap(path: string, value: unknown): Record<string, strin
       }
     }
     out[glob] = rules as string[]
+  }
+  return out
+}
+
+/** Validates an `allow` grandfather map: an open path/id → positive-integer map (a line count or a
+ *  CCN). Values must be positive integers — a float/negative/zero/non-number is a ConfigError (it
+ *  would be a nonsensical high-water mark). Keys are opaque (a file path or `"file name"`). */
+function validateAllowMap(path: string, value: unknown): Record<string, number> {
+  if (!isPlainObject(value)) {
+    throw new ConfigError(`Invalid baseline: "${path}" must be an object (path → grandfathered number)`)
+  }
+  const out: Record<string, number> = {}
+  for (const [key, n] of Object.entries(value)) {
+    if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0) {
+      throw new ConfigError(`Invalid baseline: "${path}"."${key}" must be a positive integer, got ${JSON.stringify(n)}`)
+    }
+    out[key] = n
   }
   return out
 }

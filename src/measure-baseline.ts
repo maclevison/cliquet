@@ -51,6 +51,23 @@ export function applyMeasuredBaseline(result: CheckResult): MeasuredBaseline {
     if (v !== undefined) spec.set(baseline, v)
   }
 
+  // Threshold gates: grandfather each measured offender into its `allow` map; the THRESHOLD stays at
+  // the default (a NEW oversized file/function is still caught — only the existing ones are held).
+  const fs = gate('file_size')
+  if (fs && (fs.status === 'pass' || fs.status === 'fail')) {
+    const offenders = fs.current.offenders
+    if (Array.isArray(offenders)) {
+      for (const o of offenders as Array<{ file: string; lines: number }>) baseline.file_size.allow[o.file] = o.lines
+    }
+  }
+  const cx = gate('complexity')
+  if (cx && (cx.status === 'pass' || cx.status === 'fail')) {
+    const over = cx.current.over_block
+    if (Array.isArray(over)) {
+      for (const o of over as Array<{ id: string; ccn: number }>) baseline.complexity.allow[o.id] = o.ccn
+    }
+  }
+
   const cov = gate('coverage')
   if (cov) {
     const pct = cov.status === 'pass' || cov.status === 'fail' ? num(cov.current.percentage) : undefined

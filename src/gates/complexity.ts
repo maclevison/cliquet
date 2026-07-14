@@ -9,7 +9,7 @@ export const complexityGate: Gate = {
   label: 'Cyclomatic Complexity',
 
   async run(ctx, baseline): Promise<GateResult> {
-    const { warn_ccn, block_ccn } = baseline.complexity
+    const { warn_ccn, block_ccn, allow } = baseline.complexity
     const all: FunctionComplexity[] = []
     for (const file of listSourceFiles(ctx.sourceDirs, ctx.isExcluded)) {
       // .vue SFCs require extracting the <script> block before parsing (post-MVP);
@@ -17,7 +17,10 @@ export const complexityGate: Gate = {
       if (file.endsWith('.vue')) continue
       all.push(...measureFileComplexity(relative(ctx.rootPath, file), readFileSync(file, 'utf8')))
     }
-    const blockers = all.filter((f) => f.ccn > block_ccn)
+    // Key the grandfather by file+name (NOT file:line) so a line shift above a function doesn't
+    // ungrandfather it. A grandfathered function may hold or shrink below its CCN, never grow past.
+    const idOf = (f: FunctionComplexity): string => `${f.file} ${f.name}`
+    const blockers = all.filter((f) => f.ccn > block_ccn && f.ccn > (allow[idOf(f)] ?? 0))
     const warnings = all.filter((f) => f.ccn > warn_ccn && f.ccn <= block_ccn)
     const maxCcn = all.reduce((max, f) => Math.max(max, f.ccn), 0)
 
@@ -46,7 +49,13 @@ export const complexityGate: Gate = {
       status: blockers.length > 0 ? 'fail' : 'pass',
       message: `max CCN ${maxCcn}, ${blockers.length} violations (>${block_ccn}), ${warnings.length} warnings (>${warn_ccn})`,
       baseline: { warn_ccn, block_ccn },
-      current: { max_ccn: maxCcn, violations: blockers.length, warnings: warnings.length },
+      // `over_block` (structured, post-allow) lets `init` grandfather each into complexity.allow.
+      current: {
+        max_ccn: maxCcn,
+        violations: blockers.length,
+        warnings: warnings.length,
+        over_block: blockers.map((f) => ({ id: idOf(f), ccn: f.ccn })),
+      },
       actions,
     }
   },

@@ -78,6 +78,19 @@ describe('applyMeasuredBaseline', () => {
     }
   })
 
+  it('grandfathers file_size / complexity offenders into their allow maps (thresholds unchanged)', () => {
+    const { baseline } = applyMeasuredBaseline(
+      result([
+        { name: 'file_size', status: 'fail', current: { offending_files: 1, offenders: [{ file: 'src/big.ts', lines: 2030 }] } },
+        { name: 'complexity', status: 'fail', current: { max_ccn: 61, violations: 1, warnings: 0, over_block: [{ id: 'src/a.ts f', ccn: 61 }] } },
+      ]),
+    )
+    expect(baseline.file_size.max_lines).toBe(1000) // threshold unchanged
+    expect(baseline.file_size.allow).toEqual({ 'src/big.ts': 2030 })
+    expect(baseline.complexity.block_ccn).toBe(50) // threshold unchanged
+    expect(baseline.complexity.allow).toEqual({ 'src/a.ts f': 61 })
+  })
+
   it('leaves bundle at the default (it is direct-measured by the caller, not from the gate run)', () => {
     const { baseline } = applyMeasuredBaseline(
       result([{ name: 'bundle_size', status: 'skip', current: {} }]),

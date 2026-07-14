@@ -17,13 +17,17 @@ export const fileSizeGate: Gate = {
 
   async run(ctx, baseline): Promise<GateResult> {
     const maxLines = baseline.file_size.max_lines
+    const allow = baseline.file_size.allow
     const offenders: Array<{ file: string; lines: number }> = []
     for (const file of listSourceFiles(ctx.sourceDirs, ctx.isExcluded)) {
       const lines = countLines(readFileSync(file, 'utf8'))
-      if (lines > maxLines) offenders.push({ file: relative(ctx.rootPath, file), lines })
+      const rel = relative(ctx.rootPath, file)
+      // A grandfathered file may hold or shrink below its allow entry, never grow past it.
+      if (lines > Math.max(maxLines, allow[rel] ?? 0)) offenders.push({ file: rel, lines })
     }
     const base = { max_lines: maxLines }
-    const current = { offending_files: offenders.length }
+    // `offenders` (structured) lets `init` grandfather each into file_size.allow.
+    const current = { offending_files: offenders.length, offenders }
     if (offenders.length === 0) {
       return {
         status: 'pass',
