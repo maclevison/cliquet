@@ -49,7 +49,7 @@ Requires Node.js ≥ 20.11.
 ## Quick start
 
 ```bash
-# Create the baseline with default thresholds
+# Measure your project and write the baseline at its current state (--defaults skips measuring)
 npx cliquet init
 
 # Run all gates and compare against the baseline
@@ -85,7 +85,16 @@ Tools are detected by their config files (`.prettierrc`, `biome.json`, `eslint.c
 - **Equal → pass.**
 - **Improved → pass**, and the report suggests updating the baseline so the ratchet tightens.
 
-**Adopting on a legacy codebase:** defaults are aspirational, so the first `check` may fail. Edit the baseline thresholds to the values `check` reports (never looser than measured) — from there the ratchet holds that line. Security findings are zero-tolerance and have no threshold: fix the code, disable the specific rule under `security.rules`, or — for a false positive you don't want to silence repo-wide — suppress it narrowly with [`security.suppress`](#suppressing-security-false-positives).
+**Adopting on a legacy codebase:** `cliquet init` **measures your project and records the baseline at its current state** — each count/ratio gate's measured value becomes its floor, and every oversized file / high-CCN function is grandfathered into `file_size.allow` / `complexity.allow` at its measured size. So the first `check` passes, and from there the ratchet only tightens: existing offenders may hold or shrink (never grow past their entry), and a *new* oversized file is still caught against the strict threshold. `--defaults` skips measuring (writes the aspirational defaults instead).
+
+A few things are deliberately not auto-baselined:
+
+- **Coverage** that can't be measured (no runner, or the suite fails before writing a summary) floors to **0** with a note — raise it once tests run.
+- A gate that **errors** during `init` keeps its default, is flagged in the output, and `init` exits non-zero — a partial baseline is never trusted silently. Fix the tool and re-run `init`.
+- **Advisories** are recorded as a floor, but they come from the live registry: a newly-disclosed CVE against an unchanged lockfile can raise the count with no code change. Re-baseline (`init --force`) when that happens.
+- **Security findings** are zero-tolerance and never snapshotted: fix the code, disable the rule under `security.rules`, or suppress a false positive narrowly with [`security.suppress`](#suppressing-security-false-positives).
+
+Editing `source_dirs` after `init` invalidates the measured floors — set your `paths`/`exclude` first, then `init --force`.
 
 ### Scoping with `source_dirs`
 
