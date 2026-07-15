@@ -1,35 +1,122 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseNpmAudit, parseYarnAudit, createSecurityGate, defaultRunAudit } from '../../../src/gates/security.js'
+import {
+  createSecurityGate,
+  defaultRunAudit,
+  collectInstalledPackages,
+  type AuditCounts,
+} from '../../../src/gates/security.js'
 import { DEFAULT_BASELINE, type Baseline } from '../../../src/baseline.js'
 import { createProjectContext } from '../../../src/context.js'
 
-const fixture = (name: string) =>
-  readFileSync(join(import.meta.dirname, '..', '..', 'fixtures', 'outputs', name), 'utf8')
+const CLEAN: AuditCounts = { criticalHigh: 0, total: 0 }
+const VULNS: AuditCounts = { criticalHigh: 2, total: 3, packages: ['left-pad', 'minimist'] }
 
-describe('parseNpmAudit', () => {
-  it('extracts critical+high from metadata', () => {
-    expect(parseNpmAudit(fixture('npm-audit-with-vulns.json'))).toEqual({ criticalHigh: 2, total: 3 })
-    expect(parseNpmAudit(fixture('npm-audit-clean.json'))).toEqual({ criticalHigh: 0, total: 0 })
+/** Writes node_modules/<name>/package.json under `base` (name may be scoped or a nested path). */
+function installPkg(base: string, dirParts: string[], name: string, version: string): void {
+  const dir = join(base, ...dirParts)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version }))
+}
+
+describe('collectInstalledPackages', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'cliquet-nm-'))
   })
 
-  it('returns null for invalid JSON', () => {
-    expect(parseNpmAudit('not json')).toBeNull()
+  it('returns empty when there is no node_modules', () => {
+    expect(collectInstalledPackages(root).size).toBe(0)
+  })
+
+  it('reads flat, scoped, and nested (npm/yarn) packages', () => {
+    installPkg(root, ['node_modules', 'foo'], 'foo', '1.0.0')
+    installPkg(root, ['node_modules', '@scope', 'bar'], '@scope/bar', '2.1.0')
+    installPkg(root, ['node_modules', 'foo', 'node_modules', 'nested'], 'nested', '3.0.0')
+    const got = collectInstalledPackages(root)
+    expect(got.get('foo')).toEqual(new Set(['1.0.0']))
+    expect(got.get('@scope/bar')).toEqual(new Set(['2.1.0']))
+    expect(got.get('nested')).toEqual(new Set(['3.0.0']))
+  })
+
+  it('reaches pnpm real copies under .pnpm and does not cycle on the top-level symlink', () => {
+    installPkg(root, ['node_modules', '.pnpm', 'minimist@1.2.0', 'node_modules', 'minimist'], 'minimist', '1.2.0')
+    // pnpm's top-level entry is a symlink into .pnpm — the walk must skip it (isDirectory() === false)
+    symlinkSync(
+      join(root, 'node_modules', '.pnpm', 'minimist@1.2.0', 'node_modules', 'minimist'),
+      join(root, 'node_modules', 'minimist'),
+    )
+    const got = collectInstalledPackages(root)
+    expect(got.get('minimist')).toEqual(new Set(['1.2.0']))
+    expect(got.size).toBe(1) // the symlink was not followed into a second entry
+  })
+
+  it('collapses multiple installed versions of one package into a set', () => {
+    installPkg(root, ['node_modules', 'dup'], 'dup', '1.0.0')
+    installPkg(root, ['node_modules', 'other', 'node_modules', 'dup'], 'dup', '2.0.0')
+    expect(collectInstalledPackages(root).get('dup')).toEqual(new Set(['1.0.0', '2.0.0']))
   })
 })
 
-describe('parseYarnAudit', () => {
-  it('extracts critical+high from the auditSummary line (yarn classic NDJSON)', () => {
-    const ndjson = [
-      JSON.stringify({ type: 'info', data: 'x' }),
-      JSON.stringify({ type: 'auditSummary', data: { vulnerabilities: { info: 0, low: 1, moderate: 0, high: 1, critical: 1 } } }),
-    ].join('\n')
-    expect(parseYarnAudit(ndjson)).toEqual({ criticalHigh: 2, total: 3 })
+describe('defaultRunAudit (bulk advisory endpoint)', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'cliquet-audit-'))
   })
-  it('returns null without an auditSummary line', () => {
-    expect(parseYarnAudit('not json\n{"type":"info"}')).toBeNull()
+
+  const ctxWith = (over: Partial<ReturnType<typeof createProjectContext>>) => ({
+    ...createProjectContext(root, DEFAULT_BASELINE, 300_000),
+    ...over,
+  })
+
+  it('returns null (skip) when there is no lockfile / package manager', async () => {
+    expect(await defaultRunAudit(ctxWith({ packageManager: null }))).toBeNull()
+  })
+
+  it('returns null (skip) when deps are not installed (no node_modules)', async () => {
+    expect(await defaultRunAudit(ctxWith({ packageManager: 'npm', lockfileDir: root }))).toBeNull()
+  })
+
+  it('returns null (skip) — NOT an error — when the endpoint/transport fails', async () => {
+    installPkg(root, ['node_modules', 'foo'], 'foo', '1.0.0')
+    const throwing = async () => {
+      throw new Error('bulk advisory endpoint returned 500')
+    }
+    expect(await defaultRunAudit(ctxWith({ packageManager: 'pnpm', lockfileDir: root }), throwing)).toBeNull()
+  })
+
+  it('counts critical/high advisories from the bulk response and lists the affected packages', async () => {
+    installPkg(root, ['node_modules', 'minimist'], 'minimist', '1.2.0')
+    installPkg(root, ['node_modules', 'lodash'], 'lodash', '4.17.11')
+    installPkg(root, ['node_modules', 'safe'], 'safe', '1.0.0')
+    let received: Record<string, string[]> | undefined
+    const fetcher = async (installed: Record<string, string[]>) => {
+      received = installed
+      return {
+        minimist: [{ severity: 'critical' }, { severity: 'moderate' }],
+        lodash: [{ severity: 'high' }],
+      }
+    }
+    const counts = await defaultRunAudit(ctxWith({ packageManager: 'npm', lockfileDir: root }), fetcher)
+    expect(counts).toEqual({ criticalHigh: 2, total: 3, packages: ['minimist', 'lodash'] })
+    // it sent every installed package (including the one with no advisory)
+    expect(received).toEqual({ minimist: ['1.2.0'], lodash: ['4.17.11'], safe: ['1.0.0'] })
+  })
+
+  it('walks node_modules under lockfileDir, not rootPath (monorepo)', async () => {
+    installPkg(root, ['node_modules', 'foo'], 'foo', '1.0.0')
+    let received: Record<string, string[]> | undefined
+    const fetcher = async (installed: Record<string, string[]>) => {
+      received = installed
+      return {}
+    }
+    await defaultRunAudit(
+      ctxWith({ packageManager: 'pnpm', rootPath: join(root, 'apps', 'web'), lockfileDir: root }),
+      fetcher,
+    )
+    expect(received).toEqual({ foo: ['1.0.0'] })
   })
 })
 
@@ -41,10 +128,10 @@ describe('securityGate', () => {
     writeFileSync(join(root, '.gitignore'), '.env\n*.pem\n*.key\n')
   })
 
-  function gateWith(auditJson: string | null) {
+  function gateWith(audit: AuditCounts | null) {
     // injects a fake audit runner and disables package_freshness (network)
     return createSecurityGate({
-      runAudit: async () => auditJson,
+      runAudit: async () => audit,
       freshnessFetcher: async () => ({ time: {} }),
     })
   }
@@ -58,20 +145,14 @@ describe('securityGate', () => {
   it('passes on a clean project', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
-    const r = await gateWith(fixture('npm-audit-clean.json')).run(
-      createProjectContext(root, baseline, 300_000),
-      baseline,
-    )
+    const r = await gateWith(CLEAN).run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.status).toBe('pass')
   })
 
   it('fails with a finding from an enabled rule (zero tolerance)', async () => {
     writeFileSync(join(root, 'src', 'bad.ts'), 'eval(input)')
     const baseline = baselineNoFreshness()
-    const r = await gateWith(fixture('npm-audit-clean.json')).run(
-      createProjectContext(root, baseline, 300_000),
-      baseline,
-    )
+    const r = await gateWith(CLEAN).run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.status).toBe('fail')
     expect(r.actions[0]?.files[0]).toContain('bad.ts:1')
   })
@@ -80,17 +161,14 @@ describe('securityGate', () => {
     writeFileSync(join(root, 'src', 'bad.ts'), 'eval(input)')
     const baseline = baselineNoFreshness()
     baseline.security.rules.eval_usage = false
-    const r = await gateWith(fixture('npm-audit-clean.json')).run(
-      createProjectContext(root, baseline, 300_000),
-      baseline,
-    )
+    const r = await gateWith(CLEAN).run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.status).toBe('pass')
   })
 
   it('emits a warn for a misplaced (unused) cliquet-ignore directive', async () => {
     writeFileSync(join(root, 'src', 'bad.ts'), 'eval(x) // cliquet-ignore-next-line eval_usage')
     const baseline = baselineNoFreshness()
-    const r = await gateWith(fixture('npm-audit-clean.json')).run(createProjectContext(root, baseline, 300_000), baseline)
+    const r = await gateWith(CLEAN).run(createProjectContext(root, baseline, 300_000), baseline)
     const warn = r.actions.find((a) => a.type === 'UNUSED DIRECTIVE')
     expect(warn?.severity).toBe('warn')
     expect(warn?.files.some((f) => f.includes('eval_usage'))).toBe(true)
@@ -101,7 +179,7 @@ describe('securityGate', () => {
       writeFileSync(join(root, 'src', 'bad.ts'), src)
       const baseline = baselineNoFreshness()
       baseline.security.suppress = suppress
-      return gateWith(fixture('npm-audit-clean.json')).run(createProjectContext(root, baseline, 300_000), baseline)
+      return gateWith(CLEAN).run(createProjectContext(root, baseline, 300_000), baseline)
     }
 
     it('suppresses a matching glob + rule and reports it as a visible warn (passes)', async () => {
@@ -137,12 +215,11 @@ describe('securityGate', () => {
   it('fails when critical/high advisories exceed the baseline', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
-    const r = await gateWith(fixture('npm-audit-with-vulns.json')).run(
-      createProjectContext(root, baseline, 300_000),
-      baseline,
-    )
+    const r = await gateWith(VULNS).run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.status).toBe('fail')
     expect(r.message).toContain('advisories')
+    const block = r.actions.find((a) => a.type === 'FIX SEC' && a.message.includes('advisories'))
+    expect(block?.files).toEqual(['left-pad', 'minimist']) // the affected packages, from the bulk response
   })
 
   it('advisory_ratchet=false: advisories never fail the gate and runAudit is not called', async () => {
@@ -151,7 +228,7 @@ describe('securityGate', () => {
     const gate = createSecurityGate({
       runAudit: async () => {
         auditCalled = true
-        return fixture('npm-audit-with-vulns.json') // 2 critical/high — would fail if ratcheted
+        return VULNS // 2 critical/high — would fail if ratcheted
       },
       freshnessFetcher: async () => ({ time: {} }),
     })
@@ -161,15 +238,15 @@ describe('securityGate', () => {
     expect(r.status).toBe('pass')
     expect(auditCalled).toBe(false)
     expect(r.message).toMatch(/advisory ratchet off/i)
-    expect(r.message).not.toMatch(/no lockfile/i)
+    expect(r.message).not.toMatch(/unavailable/i)
   })
 
-  it('missing audit (no lockfile) does not fail the gate and does not report advisories as measured', async () => {
+  it('unavailable audit (null) does not fail — advisories are not reported as measured', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
     const r = await gateWith(null).run(createProjectContext(root, baseline, 300_000), baseline)
-    expect(r.status).toBe('pass')
-    expect(r.message).toContain('audit skipped')
+    expect(r.status).toBe('pass') // a broken/unavailable endpoint must never fail the check
+    expect(r.message).toContain('advisory audit unavailable')
     // advisories was not measured — reporting 0 would be a false "measured clean"
     expect(r.current).toEqual({ findings: 0 })
     expect('advisories' in r.current).toBe(false)
@@ -178,43 +255,15 @@ describe('securityGate', () => {
   it('present audit reports measured advisories in current', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
-    const r = await gateWith(fixture('npm-audit-clean.json')).run(
-      createProjectContext(root, baseline, 300_000),
-      baseline,
-    )
+    const r = await gateWith(CLEAN).run(createProjectContext(root, baseline, 300_000), baseline)
     expect(r.current).toEqual({ advisories: 0, findings: 0 })
-  })
-
-  it('present but unparseable audit becomes error — not a silent pass', async () => {
-    writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
-    writeFileSync(join(root, 'package-lock.json'), '{}')
-    const baseline = baselineNoFreshness()
-    const r = await gateWith('garbage output').run(createProjectContext(root, baseline, 300_000), baseline)
-    expect(r.status).toBe('error')
-  })
-
-  it('runs the audit from lockfileDir when it differs from rootPath', async () => {
-    let seenCwd: string | undefined
-    const fakeRun = async (_bin: string, _args: string[], opts: { cwd: string; timeoutMs: number }) => {
-      seenCwd = opts.cwd
-      return { exitCode: 0, stdout: fixture('npm-audit-clean.json'), stderr: '', timedOut: false, failed: false }
-    }
-    const baseline = baselineNoFreshness()
-    const ctx = {
-      ...createProjectContext(root, baseline, 300_000),
-      rootPath: join(root, 'apps', 'web'),
-      lockfileDir: root,
-      packageManager: 'pnpm' as const,
-    }
-    await defaultRunAudit(ctx, fakeRun)
-    expect(seenCwd).toBe(root)
   })
 
   it('marks the result as workspace-wide when lockfileDir differs from rootPath', async () => {
     writeFileSync(join(root, 'src', 'ok.ts'), 'export const x = 1')
     const baseline = baselineNoFreshness()
     const ctx = { ...createProjectContext(root, baseline, 300_000), lockfileDir: '/other/repo' }
-    const r = await gateWith(fixture('npm-audit-clean.json')).run(ctx, baseline)
+    const r = await gateWith(CLEAN).run(ctx, baseline)
     expect(r.message).toContain('(workspace-wide audit)')
   })
 
@@ -223,7 +272,7 @@ describe('securityGate', () => {
     const baseline = baselineNoFreshness()
     const base = createProjectContext(root, baseline, 300_000)
     for (const lockfileDir of [root, null]) {
-      const r = await gateWith(fixture('npm-audit-clean.json')).run({ ...base, lockfileDir }, baseline)
+      const r = await gateWith(CLEAN).run({ ...base, lockfileDir }, baseline)
       expect(r.message).not.toContain('workspace-wide')
     }
   })

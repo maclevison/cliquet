@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { relative } from 'node:path'
+import { readFileSync, readdirSync, type Dirent } from 'node:fs'
+import { join, relative } from 'node:path'
 import picomatch from 'picomatch'
-import type { Action, Gate, GateResult, PackageManager, ProjectContext } from '../types.js'
+import type { Action, Gate, GateResult, ProjectContext } from '../types.js'
 import { expandExcludePatterns, toPosix } from '../context.js'
 import { listSourceFiles } from '../source-files.js'
 import { CONTENT_RULES, runContentRules, type DirectiveUse, type SecurityFinding } from '../security/content-rules.js'
@@ -11,68 +11,126 @@ import {
   defaultRegistryFetcher,
   type RegistryFetcher,
 } from '../security/project-rules.js'
-import { runCommand } from '../process.js'
 
 export interface AuditCounts {
   criticalHigh: number
   total: number
+  /** Names of packages with ≥1 critical/high advisory — surfaced in the fail action. */
+  packages?: string[]
 }
 
-export function parseNpmAudit(stdout: string): AuditCounts | null {
+interface Advisory {
+  severity?: string
+}
+
+/**
+ * Queries the npm bulk advisory endpoint directly (npm's own audit backend) instead of shelling out
+ * to `<pm> audit`. The retired GET audits endpoint (410 as of 2026-07-15) broke `pnpm audit --json`
+ * project-wide; the bulk endpoint pre-filters advisories to the versions we send, so we count what it
+ * returns. `installed` is `{ pkg: [versions] }`; the response is `{ pkg: [advisory] }` (only vulnerable
+ * packages appear). Returns null on any transport/endpoint failure — audit becomes UNMEASURABLE (skip),
+ * never a gate ERROR.
+ */
+export type AdvisoryFetcher = (installed: Record<string, string[]>) => Promise<Record<string, Advisory[]> | null>
+
+const BULK_ADVISORY_URL = 'https://registry.npmjs.org/-/npm/v1/security/advisories/bulk'
+
+export async function defaultBulkFetcher(installed: Record<string, string[]>): Promise<Record<string, Advisory[]>> {
+  const res = await fetch(BULK_ADVISORY_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(installed),
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (!res.ok) throw new Error(`bulk advisory endpoint returned ${res.status}`)
+  return (await res.json()) as Record<string, Advisory[]>
+}
+
+const addVersion = (out: Map<string, Set<string>>, name: string, version: string): void => {
+  let s = out.get(name)
+  if (!s) {
+    s = new Set()
+    out.set(name, s)
+  }
+  s.add(version)
+}
+
+function recordPackage(pkgDir: string, out: Map<string, Set<string>>): void {
   try {
-    const parsed = JSON.parse(stdout) as {
-      metadata?: { vulnerabilities?: Record<string, number> }
-    }
-    const v = parsed.metadata?.vulnerabilities
-    if (!v) return null
-    return { criticalHigh: (v.critical ?? 0) + (v.high ?? 0), total: v.total ?? 0 }
+    const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as { name?: unknown; version?: unknown }
+    if (typeof pkg.name === 'string' && typeof pkg.version === 'string') addVersion(out, pkg.name, pkg.version)
   } catch {
-    return null
+    // no/invalid package.json here — not a package dir
+  }
+  scanNodeModules(join(pkgDir, 'node_modules'), out) // npm/yarn nesting
+}
+
+const dirsIn = (dir: string): Dirent[] => {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()) // isDirectory() is false for symlinks → no cycles
+  } catch {
+    return []
   }
 }
 
-const AUDIT_COMMANDS: Record<string, string[]> = {
-  npm: ['audit', '--json'],
-  pnpm: ['audit', '--json'],
-  yarn: ['audit', '--json'],
-}
-
-/** yarn classic emits NDJSON; the type=auditSummary line carries the totals. */
-export function parseYarnAudit(stdout: string): AuditCounts | null {
-  for (const line of stdout.split('\n')) {
-    try {
-      const parsed = JSON.parse(line) as { type?: string; data?: { vulnerabilities?: Record<string, number> } }
-      if (parsed.type === 'auditSummary' && parsed.data?.vulnerabilities) {
-        const v = parsed.data.vulnerabilities
-        return {
-          criticalHigh: (v.critical ?? 0) + (v.high ?? 0),
-          total: Object.values(v).reduce((a, b) => a + b, 0),
-        }
-      }
-    } catch {
-      // non-JSON line: ignore
+function scanNodeModules(nmDir: string, out: Map<string, Set<string>>): void {
+  for (const e of dirsIn(nmDir)) {
+    if (e.name === '.bin') continue
+    const full = join(nmDir, e.name)
+    if (e.name === '.pnpm') {
+      // pnpm store: .pnpm/<pkg>@<ver>/node_modules/<pkg> holds the REAL copies (top-level are symlinks)
+      for (const store of dirsIn(full)) scanNodeModules(join(full, store.name, 'node_modules'), out)
+    } else if (e.name.startsWith('@')) {
+      for (const scoped of dirsIn(full)) recordPackage(join(full, scoped.name), out)
+    } else {
+      recordPackage(full, out)
     }
   }
-  return null
 }
 
-export function parseAudit(pm: PackageManager | null, stdout: string): AuditCounts | null {
-  return pm === 'yarn' ? parseYarnAudit(stdout) : parseNpmAudit(stdout)
+/** Every package installed under `dir/node_modules` (name → versions). Walks real dirs only, so pnpm's
+ *  symlink farm can't cycle while its `.pnpm` real copies are still reached. PM-agnostic, dep-free. */
+export function collectInstalledPackages(dir: string): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  scanNodeModules(join(dir, 'node_modules'), out)
+  return out
 }
 
-/** Runs the package manager's audit; null = not applicable (no lockfile/pm). */
-export async function defaultRunAudit(ctx: ProjectContext, run = runCommand): Promise<string | null> {
-  if (ctx.packageManager === null) return null
-  const bin = ctx.resolveTool(ctx.packageManager) ?? ctx.packageManager
-  const args = AUDIT_COMMANDS[ctx.packageManager]
-  if (!args) return null
-  // Audits must run where the lockfile lives (monorepo: the repo root)
-  const result = await run(bin, args, { cwd: ctx.lockfileDir ?? ctx.rootPath, timeoutMs: ctx.timeoutMs })
-  return result.stdout || null
+/** Audits the installed tree against the bulk advisory endpoint. null = UNMEASURABLE (no lockfile, deps
+ *  not installed, or registry unreachable) → the gate skips advisories; it never errors on that. */
+export async function defaultRunAudit(ctx: ProjectContext, fetcher: AdvisoryFetcher = defaultBulkFetcher): Promise<AuditCounts | null> {
+  if (ctx.packageManager === null) return null // no lockfile → nothing to audit (unchanged contract)
+  const installed = collectInstalledPackages(ctx.lockfileDir ?? ctx.rootPath)
+  if (installed.size === 0) return null // deps not installed → cannot measure
+  const body: Record<string, string[]> = {}
+  for (const [name, versions] of installed) body[name] = [...versions]
+  let advisories: Record<string, Advisory[]> | null
+  try {
+    advisories = await fetcher(body)
+  } catch {
+    return null // endpoint/transport failure → unmeasurable, NEVER a gate error
+  }
+  if (!advisories) return null
+  let criticalHigh = 0
+  let total = 0
+  const packages: string[] = []
+  for (const [name, list] of Object.entries(advisories)) {
+    if (!Array.isArray(list)) continue
+    let hit = false
+    for (const a of list) {
+      total++
+      if (a?.severity === 'critical' || a?.severity === 'high') {
+        criticalHigh++
+        hit = true
+      }
+    }
+    if (hit) packages.push(name)
+  }
+  return { criticalHigh, total, packages }
 }
 
 export interface SecurityGateDeps {
-  runAudit?: (ctx: ProjectContext) => Promise<string | null>
+  runAudit?: (ctx: ProjectContext) => Promise<AuditCounts | null>
   freshnessFetcher?: RegistryFetcher
 }
 
@@ -119,21 +177,11 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
         ;(hit ? suppressed : kept).push(f)
       }
 
-      // Package manager audit — skipped entirely when the advisory ratchet is off (no network round
-      // trip, advisories never fail the gate). Everything downstream already handles auditRaw === null.
+      // Advisory audit via the bulk endpoint — skipped entirely when the advisory ratchet is off (no
+      // network round trip). null = unmeasurable (no lockfile / deps not installed / registry down):
+      // advisories are simply not scored, never an ERROR — a broken endpoint must not fail every check.
       const ratchetOff = baseline.security.advisory_ratchet === false
-      const auditRaw = ratchetOff ? null : await runAudit(ctx)
-      const audit = auditRaw === null ? null : parseAudit(ctx.packageManager, auditRaw)
-      if (auditRaw !== null && audit === null) {
-        // output present but unparseable is NOT a legitimate skip — masking advisories would be a false pass
-        return {
-          status: 'error',
-          message: `${ctx.packageManager ?? 'npm'} audit output could not be parsed`,
-          baseline: { advisories: baseline.security.advisories },
-          current: {},
-          actions: [],
-        }
-      }
+      const audit = ratchetOff ? null : await runAudit(ctx)
       const criticalHigh = audit?.criticalHigh ?? 0
       const advisoriesFail = audit !== null && criticalHigh > baseline.security.advisories
 
@@ -179,8 +227,8 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
           type: 'FIX SEC',
           severity: 'block',
           priority: 0,
-          message: `Fix ${criticalHigh} critical/high advisories (baseline: ${baseline.security.advisories}) — run "${ctx.packageManager} audit" for details`,
-          files: [],
+          message: `Fix ${criticalHigh} critical/high advisories (baseline: ${baseline.security.advisories})`,
+          files: audit?.packages ?? [],
         })
       }
 
@@ -191,7 +239,7 @@ export function createSecurityGate(deps: SecurityGateDeps = {}): Gate {
       const auditNote = ratchetOff
         ? 'advisory ratchet off (security.advisory_ratchet=false)'
         : audit === null
-          ? 'audit skipped (no lockfile)'
+          ? 'advisory audit unavailable (advisories not measured)'
           : `${criticalHigh} critical/high advisories${workspaceWide}`
       // Audit didn't run → advisories was NOT measured: omit the key instead of
       // reporting 0 as if it were a clean measurement.
